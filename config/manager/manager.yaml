@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: cso-controller-manager
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: cso-controller-manager
+spec:
+  selector:
+    matchLabels:
+      control-plane: cso-controller-manager
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        control-plane: cso-controller-manager
+    spec:
+      containers:
+        - command:
+            - /manager
+          args:
+            - --leader-elect=true
+          env:
+            - name: GIT_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: git-provider
+            - name: GIT_ORG_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: git-org-name
+            - name: GIT_REPOSITORY_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: git-repo-name
+            - name: GIT_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: git-access-token
+          image: controller:latest
+          name: manager
+          ports:
+            - containerPort: 9440
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+              scheme: HTTP
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
+              scheme: HTTP
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: 250m
+              memory: 250Mi
+            requests:
+              cpu: 200m
+              memory: 250Mi
+      serviceAccountName: controller-manager
+      terminationGracePeriodSeconds: 10
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
