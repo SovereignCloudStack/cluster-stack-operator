@@ -1,0 +1,29 @@
+name: kubebuilder-markers-check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "api/**"
+      - ".github/workflows/kubebuilder-markers-checker.yml"
+
+jobs:
+  validation:
+    name: check for kubebuilder markers
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+
+      # go is required for building controller-gen
+      - uses: ./.github/actions/setup-go
+
+      - name: Validation For Kubebuilder Markers
+        run: |
+          make generate-manifests
+          make generate-go-deepcopy
+
+# release-manifests target requires kustomize so if the CI is taking longer time then can be removed.

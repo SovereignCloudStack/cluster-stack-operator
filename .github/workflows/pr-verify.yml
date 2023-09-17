@@ -1,0 +1,24 @@
+name: Verify Pull Request
+on: # yamllint disable-line rule:truthy
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+# yamllint disable rule:line-length
+jobs:
+  pr-verify:
+    runs-on: ubuntu-latest
+    name: Verify Pull Request
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    steps:
+      - name: Verifier action
+        id: verifier
+        uses: kubernetes-sigs/kubebuilder-release-tools@4f3d1085b4458a49ed86918b4b55505716715b77 # v0.3.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository
+        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify Shellcheck
+        run: make verify-shellcheck
