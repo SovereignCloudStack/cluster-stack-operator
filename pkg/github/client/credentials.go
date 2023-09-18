@@ -69,11 +69,7 @@ func NewGitConfig() (GitConfig, error) {
 	}
 	gitCfg.GitRepoName = val
 
-	val, ok = os.LookupEnv(EnvGitAccessToken)
-	if val == "" || !ok {
-		return GitConfig{}, fmt.Errorf("environment variable %s is not set", EnvGitAccessToken)
-	}
-	gitCfg.GitAccessToken = val
+	gitCfg.GitAccessToken = os.Getenv(EnvGitAccessToken)
 
 	return gitCfg, nil
 }
