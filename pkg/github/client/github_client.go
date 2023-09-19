@@ -61,7 +61,7 @@ func NewFactory() Factory {
 
 var _ = Client(&realGhClient{})
 
-func (_ *factory) NewClient(ctx context.Context) (Client, error) {
+func (*factory) NewClient(ctx context.Context) (Client, error) {
 	creds, err := NewGitConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create git config: %w", err)
@@ -70,6 +70,11 @@ func (_ *factory) NewClient(ctx context.Context) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create github client: %w", err)
 	}
+
+	if oAuthClient == nil {
+		oAuthClient = http.DefaultClient
+	}
+
 	return &realGhClient{
 		client:     ghclient,
 		httpclient: oAuthClient,
@@ -113,18 +118,24 @@ func (c *realGhClient) DownloadReleaseAssets(ctx context.Context, release *githu
 			return fmt.Errorf("failed to create temporary asset file: %w", err)
 		}
 
-		resp, _, err := c.client.Repositories.DownloadReleaseAsset(ctx, c.orgName, c.repoName, asset.GetID(), c.httpclient)
+		resp, redirectURL, err := c.client.Repositories.DownloadReleaseAsset(ctx, c.orgName, c.repoName, asset.GetID(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to download the release asset from URL %s: %w", *asset.BrowserDownloadURL, err)
 		}
 
-		// Save the asset file data to the local file
-		if _, err = io.Copy(assetFile, resp); err != nil {
-			return fmt.Errorf("failed to save asset file %s from HTTP response: %w", assetPath, err)
-		}
+		// if redirectURL is set, then response is nil and vice versa
+		if redirectURL != "" {
+			if err := c.handleRedirect(ctx, redirectURL, assetFile); err != nil {
+				return fmt.Errorf("failed to handle redirect: %w", err)
+			}
+		} else {
+			if _, err = io.Copy(assetFile, resp); err != nil {
+				return fmt.Errorf("failed to save asset file %s from HTTP response: %w", assetPath, err)
+			}
 
-		if err := resp.Close(); err != nil {
-			return fmt.Errorf("failed to close response: %w", err)
+			if err := resp.Close(); err != nil {
+				return fmt.Errorf("failed to close response: %w", err)
+			}
 		}
 
 		if err := assetFile.Close(); err != nil {
@@ -134,29 +145,56 @@ func (c *realGhClient) DownloadReleaseAssets(ctx context.Context, release *githu
 	return nil
 }
 
-func githubAndOAuthClientWithToken(ctx context.Context, creds GitConfig) (*github.Client, *http.Client, error) {
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: creds.GitAccessToken},
-	)
-	oauthClient := oauth2.NewClient(ctx, ts)
-	gc := github.NewClient(oauthClient)
-	isPrivate, err := isRepoPrivate(ctx, gc, creds)
+func (c *realGhClient) handleRedirect(ctx context.Context, url string, assetFile *os.File) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
-		return nil, &http.Client{}, fmt.Errorf("private repo: %w", err)
+		return fmt.Errorf("failed to define http get request: %w", err)
 	}
-	if isPrivate && creds.GitAccessToken == "" {
-		return nil, &http.Client{}, fmt.Errorf("empty access token for private repo")
+
+	resp, err := c.httpclient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to get URL %q: %w", url, err)
 	}
-	return gc, oauthClient, nil
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download asset, HTTP status code: %d", resp.StatusCode)
+	}
+
+	if _, err := io.Copy(assetFile, resp.Body); err != nil {
+		return fmt.Errorf("failed to copy http response in file: %w", err)
+	}
+
+	if err := resp.Body.Close(); err != nil {
+		return fmt.Errorf("failed to close body of response: %w", err)
+	}
+	return nil
 }
 
-func isRepoPrivate(ctx context.Context, client *github.Client, creds GitConfig) (bool, error) {
-	repository, _, err := client.Repositories.Get(ctx, creds.GitOrgName, creds.GitRepoName)
-	if err != nil {
-		return false, fmt.Errorf("failed to get repository: %w", err)
+func githubAndOAuthClientWithToken(ctx context.Context, creds GitConfig) (githubClient *github.Client, oauthClient *http.Client, err error) {
+	if creds.GitAccessToken == "" {
+		githubClient = github.NewClient(nil)
+	} else {
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: creds.GitAccessToken},
+		)
+
+		oauthClient = oauth2.NewClient(ctx, ts)
+		githubClient = github.NewClient(oauthClient)
 	}
 
-	return repository.GetPrivate(), nil
+	if err := verifyAccess(ctx, githubClient, creds); err != nil {
+		return nil, &http.Client{}, fmt.Errorf("failed to access Git API: %w", err)
+	}
+
+	return githubClient, oauthClient, nil
+}
+
+func verifyAccess(ctx context.Context, client *github.Client, creds GitConfig) error {
+	_, _, err := client.Repositories.Get(ctx, creds.GitOrgName, creds.GitRepoName)
+	if err != nil {
+		return fmt.Errorf("failed to get repository: %w", err)
+	}
+	return nil
 }
 
 func contains(source []string, ghAsset string) bool {
