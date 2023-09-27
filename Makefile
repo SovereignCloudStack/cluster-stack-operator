@@ -115,7 +115,7 @@ CTLPTL := $(abspath $(TOOLS_BIN_DIR)/ctlptl)
 ctlptl: $(CTLPTL) ## Build a local copy of ctlptl
 $(CTLPTL):
 	go install github.com/tilt-dev/ctlptl/cmd/ctlptl@v0.8.20
-	
+
 CLUSTERCTL := $(abspath $(TOOLS_BIN_DIR)/clusterctl)
 clusterctl: $(CLUSTERCTL) ## Build a local copy of clusterctl
 $(CLUSTERCTL):
@@ -352,7 +352,7 @@ ALL_GENERATE_MODULES = core
 # support go modules
 generate-modules: ## Generates missing go modules
 ifeq ($(BUILD_IN_CONTAINER),true)
-	docker run  --rm -t -i \
+	docker run --rm  \
 		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/cluster-stack-operator$(MOUNT_FLAGS) \
 		$(BUILDER_IMAGE):$(BUILDER_IMAGE_VERSION) $@;
@@ -497,7 +497,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-v $(shell pwd):/src/cluster-stack-operator$(MOUNT_FLAGS) \
 		$(BUILDER_IMAGE):$(BUILDER_IMAGE_VERSION) $@;
 else
-	lychee --config .lychee.toml ./*.md 
+	lychee --config .lychee.toml ./*.md
 endif
 
 ##@ Main Targets
