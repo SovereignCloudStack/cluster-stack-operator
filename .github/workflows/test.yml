@@ -1,0 +1,58 @@
+name: Test Code
+# yamllint disable rule:line-length
+on: # yamllint disable-line rule:truthy
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+      - "releases/**"
+    paths:
+      - "**.go"
+      - "**go.mod"
+      - "**go.sum"
+      - ".github/workflows/**"
+      - "Makefile"
+      - "images/builder/**"
+      - "images/**"
+      - "test/releases/**"
+  push:
+    branches:
+      - main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.after }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: Test Code
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+      - name: Coverage result name
+        id: name
+        run: |
+          if [ ${{ github.event.pull_request }} ]; then
+          NAME=pr-${{ github.event.pull_request.number }}
+          else
+          NAME=${{ github.sha }}
+          fi
+          echo name=${NAME} >> $GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Install dependencies
+        run: make gotestsum go-cover-treemap setup-envtest helm
+
+      - name: Install go modules for test
+        shell: bash
+        run: |
+          GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
+
+      - name: Running unit tests
+        env:
+          GO111MODULE: "on"
+        run: make test-unit

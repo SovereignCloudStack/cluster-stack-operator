@@ -128,6 +128,48 @@ $(HELM):
 	curl -sSL https://get.helm.sh/helm-v3.12.2-linux-amd64.tar.gz | tar xz -C $(TOOLS_BIN_DIR) --strip-components=1 linux-amd64/helm
 	chmod a+rx $(HELM)
 
+MOCKERY := $(abspath $(TOOLS_BIN_DIR)/mockery)
+mockery: $(MOCKERY) ## Download and extract mockery binary from github releases page
+$(MOCKERY):
+	curl -sSL https://github.com/vektra/mockery/releases/download/v2.32.4/mockery_2.32.4_Linux_x86_64.tar.gz | tar xz -C $(TOOLS_BIN_DIR)
+
+
+
+mock_dir := $(shell dirname $$(grep -r -w -l -E "type Client interface" --exclude='Makefile' --exclude-dir=vendor))
+
+.PHONY: mock
+mock: $(MOCKERY)
+	@for path in $(mock_dir); do \
+	    echo "Running mockery for $$path"; \
+	    $(MOCKERY) --all --recursive --dir=$$path --output=$$path/mocks; \
+	done
+
+.PHONY: mock-clean
+mock-clean:
+	@echo "Erasing the directory test/$(mock_test_dir)/mocks"
+	@rm -rf $(mock_test_dir)/mocks
+	@for path in $(mock_dir); do \
+	    echo "Erasing this directory $$path/mocks"; \
+	    rm -rf $$path/mocks; \
+	done
+
+go-binsize-treemap := $(abspath $(TOOLS_BIN_DIR)/go-binsize-treemap)
+go-binsize-treemap: $(go-binsize-treemap) # Build go-binsize-treemap from tools folder.
+$(go-binsize-treemap):
+	go install github.com/nikolaydubina/go-binsize-treemap@v0.2.0
+
+go-cover-treemap := $(abspath $(TOOLS_BIN_DIR)/go-cover-treemap)
+go-cover-treemap: $(go-cover-treemap) # Build go-cover-treemap from tools folder.
+$(go-cover-treemap):
+	go install github.com/nikolaydubina/go-cover-treemap@v1.3.0
+
+
+GOTESTSUM := $(abspath $(TOOLS_BIN_DIR)/gotestsum)
+gotestsum: $(GOTESTSUM) # Build gotestsum from tools folder.
+$(GOTESTSUM):
+	go install gotest.tools/gotestsum@v1.10.0
+
+
 all-tools: $(KIND) $(KUBECTL) $(CLUSTERCTL) $(CTLPTL) $(SETUP_ENVTEST) $(ENVSUBST) $(KUSTOMIZE) $(CONTROLLER_GEN)
 	echo 'done'
 
@@ -266,6 +308,11 @@ $(WORKER_CLUSTER_KUBECONFIG):
 
 KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env --bin-dir $(abspath $(TOOLS_BIN_DIR)) -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
 
+.PHONY: test-unit
+test-unit: $(SETUP_ENVTEST) $(GOTESTSUM) $(HELM) ## Run unit
+	@mkdir -p $(shell pwd)/.coverage
+	KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
+	-covermode=atomic -coverprofile=.coverage/cover.out -p=4 ./internal/controller/...
 
 ##@ Verify
 ##########
