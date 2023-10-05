@@ -1,0 +1,12 @@
+export KUBECONFIG=$PWD/.mgt-cluster-kubeconfig.yaml
+export K8S_VERSION=1-27
+export GIT_PROVIDER_B64=Z2l0aHVi
+export GIT_ACCESS_TOKEN_B64=mybase64encodedtoken
+export GIT_ORG_NAME_B64=U292ZXJlaWduQ2xvdWRTdGFjaw==
+export GIT_REPOSITORY_NAME_B64=Y2x1c3Rlci1zdGFja3M=
+export EXP_CLUSTER_RESOURCE_SET=true
+export EXP_MACHINE_POOL=true
+export CLUSTER_TOPOLOGY=true
+export EXP_RUNTIME_SDK=true
+export EXP_MACHINE_SET_PREFLIGHT_CHECKS=true
+export CLUSTER_NAME=test-dfkhje
