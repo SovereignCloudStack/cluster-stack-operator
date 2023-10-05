@@ -142,7 +142,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		return reconcile.Result{}, fmt.Errorf("failed to get ClusterStackRelease objects that are in use: %w", err)
 	}
 
-	inSpec, err := getClusterStackReleasesInSpec(clusterStack.Spec)
+	inSpec, err := getClusterStackReleasesInSpec(&clusterStack.Spec)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to get ClusterStackReleases from clusterstack.spec.versions: %w", err)
 	}
@@ -580,7 +580,7 @@ func (r *ClusterStackReconciler) getClusterStackReleasesInUse(ctx context.Contex
 	return mapUsedClusterClasses, nil
 }
 
-func getClusterStackReleasesInSpec(spec csov1alpha1.ClusterStackSpec) (map[string]struct{}, error) {
+func getClusterStackReleasesInSpec(spec *csov1alpha1.ClusterStackSpec) (map[string]struct{}, error) {
 	clusterStackReleaseMap := make(map[string]struct{})
 
 	for _, v := range spec.Versions {
