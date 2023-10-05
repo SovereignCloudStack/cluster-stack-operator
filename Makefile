@@ -95,6 +95,12 @@ kustomize: $(KUSTOMIZE) ## Build a local copy of kustomize
 $(KUSTOMIZE): # Build kustomize from tools folder.
 	go install sigs.k8s.io/kustomize/kustomize/v4@v4.5.7
 
+TILT := $(abspath $(TOOLS_BIN_DIR)/tilt)
+tilt: $(TILT) ## Build a local copy of tilt
+$(TILT):
+	@mkdir -p $(TOOLS_BIN_DIR)
+	MINIMUM_TILT_VERSION=0.33.3 hack/ensure-tilt.sh
+
 ENVSUBST := $(abspath $(TOOLS_BIN_DIR)/envsubst)
 envsubst: $(ENVSUBST) ## Build a local copy of envsubst
 $(ENVSUBST): # Build envsubst from tools folder.
@@ -105,6 +111,11 @@ setup-envtest: $(SETUP_ENVTEST) ## Build a local copy of setup-envtest
 $(SETUP_ENVTEST): # Build setup-envtest from tools folder.
 	go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20230620070423-a784ee78d04b
 
+CTLPTL := $(abspath $(TOOLS_BIN_DIR)/ctlptl)
+ctlptl: $(CTLPTL) ## Build a local copy of ctlptl
+$(CTLPTL):
+	go install github.com/tilt-dev/ctlptl/cmd/ctlptl@v0.8.20
+	
 CLUSTERCTL := $(abspath $(TOOLS_BIN_DIR)/clusterctl)
 clusterctl: $(CLUSTERCTL) ## Build a local copy of clusterctl
 $(CLUSTERCTL):
@@ -466,3 +477,10 @@ modules: generate-modules ## Update go.mod & go.sum
 .PHONY: builder-image-push
 builder-image-push: ## Build $(CONTROLLER_SHORT)-builder to a new version. For more information see README.
 	BUILDER_IMAGE=$(BUILDER_IMAGE) ./hack/upgrade-builder-image.sh
+
+create-workload-cluster-docker: $(ENVSUBST) $(KUBECTL)
+	cat .cluster.yaml | $(ENVSUBST) - | $(KUBECTL) apply -f -
+
+.PHONY: tilt-up
+tilt-up: env-vars-for-wl-cluster $(ENVSUBST) $(KUBECTL) $(KUSTOMIZE) $(TILT) cluster  ## Start a mgt-cluster & Tilt. Installs the CRDs and deploys the controllers
+	EXP_CLUSTER_RESOURCE_SET=true $(TILT) up --port=10351

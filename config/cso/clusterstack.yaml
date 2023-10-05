@@ -1,0 +1,14 @@
+apiVersion: clusterstack.x-k8s.io/v1alpha1
+kind: ClusterStack
+metadata:
+  name: clusterstack
+  namespace: cluster
+spec:
+  provider: docker
+  name: ferrol
+  kubernetesVersion: "1.27"
+  channel: stable
+  autoSubscribe: false
+  noProvider: true
+  versions:
+    - v1
