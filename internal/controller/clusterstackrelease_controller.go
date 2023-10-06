@@ -142,7 +142,7 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 	kubeClient := r.KubeClientFactory.NewClient(req.Namespace, r.RESTConfig)
 
 	if !clusterStackRelease.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, releaseAssets, req.Namespace, kubeClient, clusterStackRelease)
+		return r.reconcileDelete(ctx, &releaseAssets, req.Namespace, kubeClient, clusterStackRelease)
 	}
 
 	clusterStackRelease.Status.KubernetesVersion = releaseAssets.Meta.Versions.Kubernetes
@@ -166,7 +166,7 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		return reconcile.Result{}, nil
 	}
 
-	shouldRequeue, err := r.templateAndApply(ctx, releaseAssets, clusterStackRelease, kubeClient)
+	shouldRequeue, err := r.templateAndApply(ctx, &releaseAssets, clusterStackRelease, kubeClient)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to template and apply: %w", err)
 	}
@@ -183,7 +183,7 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 }
 
 // reconcileDelete controls the deletion of clusterstackrelease objects.
-func (r *ClusterStackReleaseReconciler) reconcileDelete(ctx context.Context, releaseAssets release.Release, namespace string, kubeClient kube.Client, clusterStackReleaseCR *csov1alpha1.ClusterStackRelease) (reconcile.Result, error) {
+func (r *ClusterStackReleaseReconciler) reconcileDelete(ctx context.Context, releaseAssets *release.Release, namespace string, kubeClient kube.Client, clusterStackReleaseCR *csov1alpha1.ClusterStackRelease) (reconcile.Result, error) {
 	presentClusterClasses, err := getUsedClusterClasses(ctx, r.Client, namespace)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to get usedClusterClass: %w", err)
@@ -272,7 +272,7 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 	return ready, nil
 }
 
-func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, releaseAssets release.Release, clusterStackRelease *csov1alpha1.ClusterStackRelease, kubeClient kube.Client) (bool, error) {
+func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, releaseAssets *release.Release, clusterStackRelease *csov1alpha1.ClusterStackRelease, kubeClient kube.Client) (bool, error) {
 	// template helm chart and apply objects
 	template, err := r.templateClusterClassHelmChart(releaseAssets, clusterStackRelease.Name, clusterStackRelease.Namespace)
 	if err != nil {
@@ -295,7 +295,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 }
 
 // templateClusterClassHelmChart templates the clusterClass helm chart.
-func (_ *ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets release.Release, name, namespace string) ([]byte, error) {
+func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
 	clusterClassChart, err := releaseAssets.ClusterClassChartPath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get clusterClass helm chart path: %w", err)

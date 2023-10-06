@@ -33,7 +33,8 @@ func getUsedClusterClasses(ctx context.Context, c client.Client, namespace strin
 	usedClusterClasses := make([]string, 0, len(clusterList.Items))
 
 	// list the names of all ClusterClasses that are referenced in Cluster objects
-	for _, cluster := range clusterList.Items {
+	for i := range clusterList.Items {
+		cluster := clusterList.Items[i]
 		if cluster.Spec.Topology == nil {
 			continue
 		}

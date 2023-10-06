@@ -45,7 +45,7 @@ func New(version string) (Version, error) {
 	var err error
 	channel := ChannelStable
 
-	re := regexp.MustCompile(`^v\d+(-\b\w+\b[-]\d+)?$`)
+	re := regexp.MustCompile(`^v\d+(-\b\w+\b-\d+)?$`)
 	match := re.FindStringSubmatch(version)
 
 	if len(match) == 0 {
@@ -118,19 +118,23 @@ func (csv Version) Compare(input Version) (int, error) {
 	if csv.Channel != input.Channel {
 		return 0, fmt.Errorf("cannot compare versions with different channels %s and %s", csv.Channel, input.Channel)
 	}
-	if csv.Major > input.Major {
+
+	switch {
+	case csv.Major > input.Major:
 		return 1, nil
-	} else if csv.Major < input.Major {
+	case csv.Major < input.Major:
 		return -1, nil
-	} else if csv.Major == input.Major {
-		if csv.Patch > input.Patch {
+	case csv.Major == input.Major:
+		switch {
+		case csv.Patch > input.Patch:
 			return 1, nil
-		} else if csv.Patch < input.Patch {
+		case csv.Patch < input.Patch:
 			return -1, nil
-		} else if csv.Patch == input.Patch {
+		case csv.Patch == input.Patch:
 			return 0, nil
 		}
 	}
+
 	return 0, nil
 }
 
