@@ -194,7 +194,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 		}
 
-		if err := r.getOrCreateClusterStackRelease(ctx, csr.Name, req.Namespace, *ownerRef, providerRef); err != nil {
+		if err := r.getOrCreateClusterStackRelease(ctx, csr.Name, req.Namespace, ownerRef, providerRef); err != nil {
 			conditions.MarkFalse(clusterStack,
 				csov1alpha1.ClusterStackReleasesSyncedCondition,
 				csov1alpha1.FailedToCreateOrUpdateReason,
@@ -228,7 +228,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	return reconcile.Result{}, nil
 }
 
-func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Context, name, namespace string, ownerRef metav1.OwnerReference, providerRef *corev1.ObjectReference) error {
+func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Context, name, namespace string, ownerRef *metav1.OwnerReference, providerRef *corev1.ObjectReference) error {
 	clusterStackRelease := &csov1alpha1.ClusterStackRelease{}
 
 	err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, clusterStackRelease)
@@ -250,7 +250,7 @@ func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Cont
 		Kind:       "ClusterStackRelease",
 		APIVersion: "clusterstack.x-k8s.io/v1alpha1",
 	}
-	clusterStackRelease.SetOwnerReferences([]metav1.OwnerReference{ownerRef})
+	clusterStackRelease.SetOwnerReferences([]metav1.OwnerReference{*ownerRef})
 	clusterStackRelease.Spec.ProviderRef = providerRef
 
 	if err := r.Create(ctx, clusterStackRelease); err != nil {
@@ -431,9 +431,11 @@ func (r *ClusterStackReconciler) getExistingClusterStackReleases(ctx context.Con
 
 	existingClusterStackReleases := make([]*csov1alpha1.ClusterStackRelease, 0, len(csrList.Items))
 
-	for i, csr := range csrList.Items {
-		for _, ownerRef := range csr.GetOwnerReferences() {
-			if matchesOwnerRef(ownerRef, clusterStack) {
+	for i := range csrList.Items {
+		csr := csrList.Items[i]
+		for i := range csr.GetOwnerReferences() {
+			ownerRef := csr.GetOwnerReferences()[i]
+			if matchesOwnerRef(&ownerRef, clusterStack) {
 				existingClusterStackReleases = append(existingClusterStackReleases, &csrList.Items[i])
 				break
 			}
@@ -499,7 +501,7 @@ func makeDiff(clusterStackReleases []*csov1alpha1.ClusterStackRelease, latest, l
 
 // getLatestReadyClusterStackRelease returns the latest ready clusterStackRelease or nil.
 // If one has been found, it returns additionally the Kubernetes version found in the objects's status.
-func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.ClusterStackRelease) (*string, string, error) {
+func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.ClusterStackRelease) (latest *string, k8sversion string, err error) {
 	clusterStackObjects := make(clusterstack.ClusterStacks, 0, len(clusterStackReleases))
 
 	mapKubernetesVersions := make(map[string]string)
@@ -525,8 +527,10 @@ func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.Clust
 	sort.Sort((clusterStackObjects))
 
 	// return the latest one
-	latest := clusterStackObjects[len(clusterStackObjects)-1].String()
-	return &latest, mapKubernetesVersions[latest], nil
+	cs := clusterStackObjects[len(clusterStackObjects)-1].String()
+	latest = &cs
+	k8sversion = mapKubernetesVersions[*latest]
+	return latest, k8sversion, nil
 }
 
 func getLatestReleaseFromRemoteRepository(ctx context.Context, clusterStack *csov1alpha1.ClusterStack, gc githubclient.Client) (*string, error) {
@@ -546,7 +550,7 @@ func getLatestReleaseFromRemoteRepository(ctx context.Context, clusterStack *cso
 	var clusterStacks clusterstack.ClusterStacks
 
 	for _, ghRelease := range ghReleases {
-		clusterStackObject, matches, err := matchesSpec(ghRelease.GetTagName(), clusterStack.Spec)
+		clusterStackObject, matches, err := matchesSpec(ghRelease.GetTagName(), &clusterStack.Spec)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get match release tag %q with spec of ClusterStack: %w", ghRelease.GetTagName(), err)
 		}
@@ -610,7 +614,7 @@ func getUsableClusterStackReleaseVersions(clusterStackReleases []*csov1alpha1.Cl
 	return usableVersions, nil
 }
 
-func matchesOwnerRef(a metav1.OwnerReference, clusterStack *csov1alpha1.ClusterStack) bool {
+func matchesOwnerRef(a *metav1.OwnerReference, clusterStack *csov1alpha1.ClusterStack) bool {
 	aGV, err := schema.ParseGroupVersion(a.APIVersion)
 	if err != nil {
 		return false
@@ -619,7 +623,7 @@ func matchesOwnerRef(a metav1.OwnerReference, clusterStack *csov1alpha1.ClusterS
 	return aGV.Group == clusterStack.GroupVersionKind().Group && a.Kind == clusterStack.Kind && a.Name == clusterStack.Name
 }
 
-func matchesSpec(str string, spec csov1alpha1.ClusterStackSpec) (clusterstack.ClusterStack, bool, error) {
+func matchesSpec(str string, spec *csov1alpha1.ClusterStackSpec) (clusterstack.ClusterStack, bool, error) {
 	csObject, err := clusterstack.NewFromString(str)
 	if err != nil {
 		return clusterstack.ClusterStack{}, false, fmt.Errorf("failed to get clusterstack object from string %q: %w", str, err)
@@ -631,20 +635,20 @@ func matchesSpec(str string, spec csov1alpha1.ClusterStackSpec) (clusterstack.Cl
 		csObject.Provider == spec.Provider, nil
 }
 
-func unstructuredSpecEqual(oldObj, newObj map[string]interface{}) (map[string]interface{}, bool, error) {
-	oldSpec, found, err := unstructured.NestedMap(oldObj, "spec")
+func unstructuredSpecEqual(oldObj, newObj map[string]interface{}) (newSpec map[string]interface{}, isEqual bool, err error) {
+	oldSpec, isEqual, err := unstructured.NestedMap(oldObj, "spec")
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to retrieve spec map of object: %w", err)
 	}
-	if !found {
+	if !isEqual {
 		return nil, false, fmt.Errorf("missing spec")
 	}
 
-	newSpec, found, err := unstructured.NestedMap(newObj, "spec")
+	newSpec, isEqual, err = unstructured.NestedMap(newObj, "spec")
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to retrieve spec map of object: %w", err)
 	}
-	if !found {
+	if !isEqual {
 		return nil, false, fmt.Errorf("missing spec")
 	}
 
@@ -705,7 +709,7 @@ func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 
 // ClusterStackReleaseToClusterStack is a handler.ToRequestsFunc to be used to enqueue requests for reconciliation
 // for ClusterStacks that might get updated by changes in ClusterStackReleases.
-func (_ *ClusterStackReconciler) ClusterStackReleaseToClusterStack(ctx context.Context) handler.MapFunc {
+func (*ClusterStackReconciler) ClusterStackReleaseToClusterStack(ctx context.Context) handler.MapFunc {
 	logger := log.FromContext(ctx)
 	return func(ctx context.Context, o client.Object) []reconcile.Request {
 		result := []reconcile.Request{}

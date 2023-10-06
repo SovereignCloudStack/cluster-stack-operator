@@ -57,7 +57,7 @@ func NewFactory() Factory {
 
 var _ Client = &kube{}
 
-func (_ *factory) NewClient(namespace string, resCfg *rest.Config) Client {
+func (*factory) NewClient(namespace string, resCfg *rest.Config) Client {
 	return &kube{
 		Namespace:  namespace,
 		RestConfig: resCfg,

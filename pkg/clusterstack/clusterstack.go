@@ -128,7 +128,7 @@ func New(provider, name, kubernetesVersion, csVersion string) (ClusterStack, err
 }
 
 // Validate validates a given ClusterStack.
-func (cs ClusterStack) Validate() error {
+func (cs *ClusterStack) Validate() error {
 	if cs.Provider == "" {
 		return ErrInvalidProvider
 	}
@@ -147,7 +147,7 @@ func (cs ClusterStack) Validate() error {
 	return nil
 }
 
-func (cs ClusterStack) String() string {
+func (cs *ClusterStack) String() string {
 	// release tag: myprovider-myclusterstack-1-26-v1
 	return strings.Join([]string{cs.Provider, cs.Name, cs.KubernetesVersion.String(), cs.Version.String()}, Separator)
 }

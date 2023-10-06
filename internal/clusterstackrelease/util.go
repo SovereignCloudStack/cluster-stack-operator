@@ -48,11 +48,12 @@ func Summary(csr *csov1alpha1.ClusterStackRelease) (csov1alpha1.ClusterStackRele
 
 	// if provider-specific work is done, we are left with applying objects
 	// We don't expect the condition to be not set at all, hence no else case here
-	if conditions.IsTrue(csr, csov1alpha1.ProviderClusterStackReleaseReadyCondition) {
+	switch {
+	case conditions.IsTrue(csr, csov1alpha1.ProviderClusterStackReleaseReadyCondition):
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseApplyingObjects
-	} else if conditions.IsTrue(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition) {
+	case conditions.IsTrue(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition):
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseProviderSpecificWork
-	} else if conditions.IsFalse(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition) {
+	case conditions.IsFalse(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition):
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseDownloadingAssets
 	}
 
