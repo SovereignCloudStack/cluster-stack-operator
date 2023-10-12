@@ -27,6 +27,7 @@ import (
 	//+kubebuilder:scaffold:imports
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/controller"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/csoversion"
 	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/utillog"
@@ -145,7 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
+	setupLog.Info("starting manager", "version", csoversion.Get().String())
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
