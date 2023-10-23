@@ -64,6 +64,10 @@ var _ = BeforeSuite(func() {
 		ReleaseDirectory:    "./../../test/releases",
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
 
+	Expect((&ClusterAddonCreateReconciler{
+		Client: testEnv.Manager.GetClient(),
+	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
+
 	go func() {
 		defer GinkgoRecover()
 		Expect(testEnv.StartManager(ctx)).To(Succeed())

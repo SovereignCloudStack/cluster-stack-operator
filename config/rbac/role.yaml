@@ -42,6 +42,12 @@ rules:
 - apiGroups:
   - clusterstack.x-k8s.io
   resources:
+  - clusteraddons
+  verbs:
+  - create
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
   - clusterstackreleases
   verbs:
   - create

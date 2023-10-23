@@ -135,6 +135,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controller.ClusterAddonCreateReconciler{
+		Client: mgr.GetClient(),
+	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{}); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterAddonCreate")
+		os.Exit(1)
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
