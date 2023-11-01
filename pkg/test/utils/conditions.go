@@ -19,7 +19,6 @@ package utils
 import (
 	"context"
 
-	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -29,7 +28,9 @@ import (
 
 // IsPresentAndFalseWithReason returns if condition is present in the object status with false and a reason or not.
 func IsPresentAndFalseWithReason(ctx context.Context, c client.Client, key types.NamespacedName, getter conditions.Getter, condition clusterv1.ConditionType, reason string) bool {
-	ExpectWithOffset(1, c.Get(ctx, key, getter)).To(Succeed())
+	if err := c.Get(ctx, key, getter); err != nil {
+		return false
+	}
 	if !conditions.Has(getter, condition) {
 		return false
 	}
@@ -40,7 +41,9 @@ func IsPresentAndFalseWithReason(ctx context.Context, c client.Client, key types
 
 // IsPresentAndTrue returns if condition is present in the object status with true or not.
 func IsPresentAndTrue(ctx context.Context, c client.Client, key types.NamespacedName, getter conditions.Getter, condition clusterv1.ConditionType) bool {
-	ExpectWithOffset(1, c.Get(ctx, key, getter)).To(Succeed())
+	if err := c.Get(ctx, key, getter); err != nil {
+		return false
+	}
 	if !conditions.Has(getter, condition) {
 		return false
 	}
