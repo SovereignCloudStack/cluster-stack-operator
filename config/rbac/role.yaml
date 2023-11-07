@@ -40,11 +40,37 @@ rules:
   - update
   - watch
 - apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  verbs:
+  - get
+- apiGroups:
   - clusterstack.x-k8s.io
   resources:
   - clusteraddons
   verbs:
   - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusteraddons/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusteraddons/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - clusterstack.x-k8s.io
   resources:

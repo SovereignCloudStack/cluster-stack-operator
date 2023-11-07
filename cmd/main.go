@@ -31,6 +31,7 @@ import (
 	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/utillog"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/workloadcluster"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -54,19 +55,23 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-func main() {
-	var metricsAddr string
-	var probeAddr string
-	var enableLeaderElection bool
-	var leaderElectionNamespace string
-	var watchFilterValue string
-	var watchNamespace string
-	var clusterStackConcurrency int
-	var clusterStackReleaseConcurrency int
-	var clusterAddonConcurrency int
-	var logLevel string
-	var releaseDir string
+var (
+	metricsAddr                    string
+	probeAddr                      string
+	enableLeaderElection           bool
+	leaderElectionNamespace        string
+	watchFilterValue               string
+	watchNamespace                 string
+	clusterStackConcurrency        int
+	clusterStackReleaseConcurrency int
+	clusterAddonConcurrency        int
+	logLevel                       string
+	releaseDir                     string
+	qps                            float64
+	burst                          int
+)
 
+func main() {
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9440", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
@@ -78,6 +83,8 @@ func main() {
 	flag.IntVar(&clusterAddonConcurrency, "clusteraddon-concurrency", 1, "Number of ClusterAddons to process simultaneously")
 	flag.StringVar(&logLevel, "log-level", "info", "Specifies log level. Options are 'debug', 'info' and 'error'")
 	flag.StringVar(&releaseDir, "release-dir", "/tmp/downloads/", "Specify release directory for cluster-stack releases")
+	flag.Float64Var(&qps, "qps", 50, "Enable custom query per second for kubernetes API server")
+	flag.IntVar(&burst, "burst", 100, "Enable custom burst defines how many queries the API server will accept before enforcing the limit established by qps")
 
 	flag.Parse()
 
@@ -111,6 +118,15 @@ func main() {
 
 	gitFactory := githubclient.NewFactory()
 
+	restConfig := mgr.GetConfig()
+	restConfig.QPS = float32(qps)
+	restConfig.Burst = burst
+
+	restConfigSettings := controller.RestConfigSettings{
+		QPS:   float32(qps),
+		Burst: burst,
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -123,15 +139,28 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterStack")
 		os.Exit(1)
 	}
+
 	if err = (&controller.ClusterStackReleaseReconciler{
 		Client:              mgr.GetClient(),
-		RESTConfig:          mgr.GetConfig(),
+		RESTConfig:          restConfig,
 		ReleaseDirectory:    releaseDir,
 		WatchFilterValue:    watchFilterValue,
 		KubeClientFactory:   kube.NewFactory(),
 		GitHubClientFactory: gitFactory,
 	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{MaxConcurrentReconciles: clusterStackReleaseConcurrency}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterStackRelease")
+		os.Exit(1)
+	}
+
+	if err = (&controller.ClusterAddonReconciler{
+		Client:                 mgr.GetClient(),
+		ReleaseDirectory:       releaseDir,
+		RestConfigSettings:     restConfigSettings,
+		WatchFilterValue:       watchFilterValue,
+		KubeClientFactory:      kube.NewFactory(),
+		WorkloadClusterFactory: workloadcluster.NewFactory(),
+	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{MaxConcurrentReconciles: clusterAddonConcurrency}); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterAddon")
 		os.Exit(1)
 	}
 
