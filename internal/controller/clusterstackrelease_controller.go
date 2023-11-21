@@ -296,10 +296,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 
 // templateClusterClassHelmChart templates the clusterClass helm chart.
 func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
-	clusterClassChart, err := releaseAssets.ClusterClassChartPath()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get clusterClass helm chart path: %w", err)
-	}
+	clusterClassChart := releaseAssets.ClusterClassChartPath()
 
 	splittedName := strings.Split(name, clusterstack.Separator)
 	releaseName := strings.Join(splittedName[0:4], clusterstack.Separator)

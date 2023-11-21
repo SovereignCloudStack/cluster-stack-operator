@@ -7,7 +7,7 @@ commonlabels:
 resources:
 - bases/clusterstack.x-k8s.io_clusterstacks.yaml
 - bases/clusterstack.x-k8s.io_clusterstackreleases.yaml
-#- bases/clusterstack.x-k8s.io_clusteraddons.yaml
+- bases/clusterstack.x-k8s.io_clusteraddons.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

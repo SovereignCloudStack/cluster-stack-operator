@@ -77,27 +77,70 @@ func New(tag, downloadPath string) (Release, bool, error) {
 		return Release{}, false, fmt.Errorf("couldn't verify the download path %s with error: %w", downloadPath, err)
 	}
 
+	metadata, err := ensureMetadata(downloadPath, metadataFileName)
+	if err != nil {
+		return Release{}, false, fmt.Errorf("failed to get metadata: %w", err)
+	}
+
+	rel.Meta = metadata
+
+	// release object is populated, we can validate it now.
+	if err := rel.Validate(); err != nil {
+		return Release{}, false, fmt.Errorf("failed to validate release: %w", err)
+	}
+
+	return rel, false, nil
+}
+
+func ensureMetadata(downloadPath, metadataFileName string) (Metadata, error) {
 	// Read the metadata.yaml file from the release.
 	metadataPath := filepath.Join(downloadPath, metadataFileName)
 	f, err := os.ReadFile(filepath.Clean(filepath.Join(downloadPath, metadataFileName)))
 	if err != nil {
-		return Release{}, false, fmt.Errorf("failed to read metadata file %s: %w", metadataPath, err)
+		return Metadata{}, fmt.Errorf("failed to read metadata file %s: %w", metadataPath, err)
 	}
 
 	metadata := Metadata{}
 	// if unmarshal fails, it indicates incomplete metadata file.
 	// But we don't want to enforce download again.
 	if err = yaml.Unmarshal(f, &metadata); err != nil {
-		return Release{}, false, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		return Metadata{}, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
 
-	rel.Meta = metadata
+	return metadata, nil
+}
 
-	if err := rel.Validate(); err != nil {
-		return Release{}, false, fmt.Errorf("failed to validate release: %w", err)
+// CheckHelmCharts checks all expected helm charts in the release directory.
+// This is a separate method, since few controllers need to check for the
+// presence of helm charts and few don't.
+func (r *Release) CheckHelmCharts() error {
+	// check if the cluster class chart is present.
+	clusterClassChartName := r.clusterClassChartName()
+	clusterClassChartPath, err := r.helmChartNamePath(clusterClassChartName)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster class chart path: %w", err)
+	}
+	if _, err := os.Stat(clusterClassChartPath); err != nil {
+		return fmt.Errorf("failed to verify the cluster addon chart path %s with error: %w", clusterClassChartPath, err)
 	}
 
-	return rel, false, nil
+	// check if the cluster addon values file is present.
+	valuesPath := filepath.Join(r.LocalDownloadPath, clusterAddonValuesName)
+	if _, err := os.Stat(valuesPath); err != nil {
+		return fmt.Errorf("failed to verify the cluster addon values path %s with error: %w", valuesPath, err)
+	}
+
+	// check if the cluster class chart is present.
+	clusterAddonChartName := r.clusterAddonChartName()
+	clusterAddonChartPath, err := r.helmChartNamePath(clusterAddonChartName)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster addon chart path: %w", err)
+	}
+	if _, err := os.Stat(clusterAddonChartPath); err != nil {
+		return fmt.Errorf("failed to verify the cluster class chart path %s with error: %w", clusterAddonChartPath, err)
+	}
+
+	return nil
 }
 
 // Validate validates the release.
@@ -126,8 +169,10 @@ func (r *Release) clusterAddonChartName() string {
 }
 
 // ClusterAddonChartPath returns the helm chart name from the given path.
-func (r *Release) ClusterAddonChartPath() (string, error) {
-	return r.helmChartNamePath(r.clusterAddonChartName())
+func (r *Release) ClusterAddonChartPath() string {
+	// we ignore the error here, since we already checked for the presence of the chart.
+	path, _ := r.helmChartNamePath(r.clusterAddonChartName())
+	return path
 }
 
 // ClusterAddonValuesPath returns the path to the cluster addon values file.
@@ -141,9 +186,11 @@ func (r *Release) clusterClassChartName() string {
 }
 
 // ClusterClassChartPath returns the absolute helm chart path for cluster class.
-func (r *Release) ClusterClassChartPath() (string, error) {
+func (r *Release) ClusterClassChartPath() string {
 	nameFilter := r.clusterClassChartName()
-	return r.helmChartNamePath(nameFilter)
+	// we ignore the error here, since we already checked for the presence of the chart.
+	path, _ := r.helmChartNamePath(nameFilter)
+	return path
 }
 
 // helmChartNamePath returns the helm chart name from the given path.
