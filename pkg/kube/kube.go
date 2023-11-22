@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -37,7 +38,6 @@ type kube struct {
 // Client has all the meathod for helm chart kube operation.
 type Client interface {
 	Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
-	Update(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
 	Delete(template []byte) error
 }
 
@@ -72,12 +72,13 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 		return nil, false, fmt.Errorf("couldn't parse k8s yaml: %w", err)
 	}
 
-	resourceMap, newResources := getResourceMap(oldResources)
+	resourceMap := getResourceMap(oldResources)
 	for _, obj := range objs {
 		oldResource, found := resourceMap[types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}]
 
 		// do nothing if synced
 		if found && oldResource.Status == csov1alpha1.ResourceStatusSynced {
+			newResources = append(newResources, oldResource)
 			continue
 		}
 
@@ -103,45 +104,7 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 			reterr := fmt.Errorf("failed to apply object: %w", err)
 			resource.Error = reterr.Error()
 			resource.Status = csov1alpha1.ResourceStatusNotSynced
-			logger.Error(reterr, "failed to apply object", "obj", obj.GetObjectKind().GroupVersionKind())
-			shouldRequeue = true
-		} else {
-			resource.Status = csov1alpha1.ResourceStatusSynced
-		}
-
-		newResources = append(newResources, resource)
-	}
-
-	return newResources, shouldRequeue, nil
-}
-
-func (k *kube) Update(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
-	logger := log.FromContext(ctx)
-
-	objs, err := parseK8sYaml(template)
-	if err != nil {
-		return nil, false, fmt.Errorf("couldn't parse k8s yaml: %w", err)
-	}
-
-	for _, obj := range objs {
-		if err := setLabel(obj, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
-			return nil, false, fmt.Errorf("error setting label: %w", err)
-		}
-
-		// call the function and get dynamic.ResourceInterface
-		// getDynamicResourceInterface
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, obj.GroupVersionKind())
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
-		}
-
-		resource := csov1alpha1.NewResourceFromUnstructured(obj)
-
-		if _, err := dr.Apply(ctx, obj.GetName(), obj, metav1.ApplyOptions{FieldManager: "kubectl", Force: true}); err != nil {
-			reterr := fmt.Errorf("failed to apply object: %w", err)
-			resource.Error = reterr.Error()
-			resource.Status = csov1alpha1.ResourceStatusNotSynced
-			logger.Error(reterr, "failed to apply object", "obj", obj.GetObjectKind().GroupVersionKind())
+			logger.Error(reterr, "failed to apply object", "obj", obj.GetObjectKind().GroupVersionKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
 			shouldRequeue = true
 		} else {
 			resource.Status = csov1alpha1.ResourceStatusSynced
@@ -163,10 +126,18 @@ func (k *kube) Update(ctx context.Context, template []byte, oldResources []*csov
 			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
 		}
 
-		if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err == nil {
-			return nil, false, fmt.Errorf("failed to delete object %q of namespace %q: %w", resource.Name, resource.Namespace, err)
+		if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			reterr := fmt.Errorf("failed to delete object: %w", err)
+			logger.Error(reterr, "failed to delete object", "obj", resource.GroupVersionKind(), "namespacedName", resource.NamespacedName())
+
+			// append resource to status and requeue again to be able to retry deletion
+			resource.Status = csov1alpha1.ResourceStatusNotSynced
+			resource.Error = reterr.Error()
+			newResources = append(newResources, resource)
+			shouldRequeue = true
 		}
 	}
+
 	return newResources, shouldRequeue, nil
 }
 
