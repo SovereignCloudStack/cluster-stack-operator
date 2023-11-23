@@ -100,36 +100,6 @@ type ProviderClusterStackReleaseTemplateResource struct {
 // TODO This has to be refined based on https://cluster-api.sigs.k8s.io/developer/providers/implementers-guide/overview.
 // The goal is that users can set up new repositories by themselves and know everything that is needed.
 
-We recommend naming the provider as `cluster-stack-provider-<provider-name>-operator`. For example, `cluster-stack-provider-openstack-operator`.
-
-### Create a new repository
-
-First step is to create the repository for the provider. We will use `cluster-api-provider-libvirt` as an example.
-
-```bash
-mkdir -p ${GOPATH}/src/cluster-stack-provider-openstack-operator
-cd ${GOPATH}/src/cluster-stack-provider-openstack-operator
-```
-
-### Generate Scaffolding
-
-Then, use `kubebuilder` to generate scaffolding.
-
-```bash
-go mod init clusterstack.x-k8s.io
-kubebuilder init --domain clusterstack.x-k8s.io --license apache2 --owner  "Author Name"
-```
-
-Next, create API definitions for this operator.
-
-```bash
-kubebuilder create api --group openstack --version v1alpha1 --kind OpenStackClusterStackReleaseTemplate
-kubebuilder create api --group openstack --version v1alpha1 --kind OpenStackClusterStackRelease
-kubebuilder create api --group openstack --version v1alpha1 --kind OpenStackNodeImageRelease
-```
-
-Create both the resource and the controller, by selecting `y` for both the prompts `Create Resource [y/n]` and `Create Controller [y/n]`.
-
 ## Some ideas to implement good provider integrations
 
 In case that there are multiple node images which have to be provided to the user, it makes sense to have separate custom resources so that one custom resource is responsible for only one node image. A pattern where there is a `ProviderClusterStackRelease` that creates different `ProviderNodeImageRelease` custom resources, one for each node image that should be built, is advisable. 
