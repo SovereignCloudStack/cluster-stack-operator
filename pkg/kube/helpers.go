@@ -105,17 +105,13 @@ func parseK8sYaml(template []byte) ([]*unstructured.Unstructured, error) {
 	return objs, nil
 }
 
-func getResourceMap(resources []*csov1alpha1.Resource) (resourceMap map[types.NamespacedName]*csov1alpha1.Resource, notToApply []*csov1alpha1.Resource) {
-	resourceMap = make(map[types.NamespacedName]*csov1alpha1.Resource)
-	notToApply = make([]*csov1alpha1.Resource, 0, len(resources))
+func getResourceMap(resources []*csov1alpha1.Resource) map[types.NamespacedName]*csov1alpha1.Resource {
+	resourceMap := make(map[types.NamespacedName]*csov1alpha1.Resource)
 
 	for i, resource := range resources {
-		if resource.Status == csov1alpha1.ResourceStatusSynced {
-			notToApply = append(notToApply, resources[i])
-		}
 		resourceMap[types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}] = resources[i]
 	}
-	return resourceMap, notToApply
+	return resourceMap
 }
 
 func setLabel(target *unstructured.Unstructured, key, val string) error {

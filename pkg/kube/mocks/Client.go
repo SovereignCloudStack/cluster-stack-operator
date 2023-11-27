@@ -62,39 +62,6 @@ func (_m *Client) Delete(template []byte) error {
 	return r0
 }
 
-// Update provides a mock function with given fields: ctx, template, oldResources
-func (_m *Client) Update(ctx context.Context, template []byte, oldResources []*v1alpha1.Resource) ([]*v1alpha1.Resource, bool, error) {
-	ret := _m.Called(ctx, template, oldResources)
-
-	var r0 []*v1alpha1.Resource
-	var r1 bool
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, []byte, []*v1alpha1.Resource) ([]*v1alpha1.Resource, bool, error)); ok {
-		return rf(ctx, template, oldResources)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, []byte, []*v1alpha1.Resource) []*v1alpha1.Resource); ok {
-		r0 = rf(ctx, template, oldResources)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*v1alpha1.Resource)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, []byte, []*v1alpha1.Resource) bool); ok {
-		r1 = rf(ctx, template, oldResources)
-	} else {
-		r1 = ret.Get(1).(bool)
-	}
-
-	if rf, ok := ret.Get(2).(func(context.Context, []byte, []*v1alpha1.Resource) error); ok {
-		r2 = rf(ctx, template, oldResources)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
-}
-
 // NewClient creates a new instance of Client. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewClient(t interface {

@@ -200,6 +200,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 			shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in)
 			if err != nil {
+				conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply")
 				return ctrl.Result{}, fmt.Errorf("failed to apply helm chart: %w", err)
 			}
 			if shouldRequeue {
@@ -240,6 +241,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in)
 		if err != nil {
+			conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply")
 			return ctrl.Result{}, fmt.Errorf("failed to apply helm chart: %w", err)
 		}
 		if shouldRequeue {
