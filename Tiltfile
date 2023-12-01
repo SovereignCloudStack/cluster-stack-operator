@@ -112,11 +112,8 @@ def fixup_yaml_empty_arrays(yaml_str):
 
 ## This should have the same versions as the Dockerfile
 tilt_dockerfile_header_cso = """
-FROM docker.io/alpine/helm:3.12.2 as helm
-
 FROM docker.io/library/alpine:3.18.0 as tilt
 WORKDIR /
-COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
 COPY manager .
 """
 

@@ -133,12 +133,6 @@ $(KUBECTL):
 	curl -fsSL "https://dl.k8s.io/release/v1.27.3/bin/$$(go env GOOS)/$$(go env GOARCH)/kubectl" -o $(KUBECTL)
 	chmod a+rx $(KUBECTL)
 
-HELM := $(abspath $(TOOLS_BIN_DIR)/helm)
-helm: $(HELM) ## Build a local copy of helm
-$(HELM):
-	curl -sSL https://get.helm.sh/helm-v3.12.2-linux-amd64.tar.gz | tar xz -C $(TOOLS_BIN_DIR) --strip-components=1 linux-amd64/helm
-	chmod a+rx $(HELM)
-
 MOCKERY := $(abspath $(TOOLS_BIN_DIR)/mockery)
 mockery: $(MOCKERY) ## Download and extract mockery binary from github releases page
 $(MOCKERY):
@@ -320,7 +314,7 @@ $(WORKER_CLUSTER_KUBECONFIG):
 KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env --bin-dir $(abspath $(TOOLS_BIN_DIR)) -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
 
 .PHONY: test-unit
-test-unit: $(SETUP_ENVTEST) $(GOTESTSUM) $(HELM) ## Run unit
+test-unit: $(SETUP_ENVTEST) $(GOTESTSUM) ## Run unit
 	@mkdir -p $(shell pwd)/.coverage
 	KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
 	-covermode=atomic -coverprofile=.coverage/cover.out -p=4 ./internal/controller/...

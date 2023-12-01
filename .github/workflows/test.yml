@@ -45,7 +45,7 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: Install dependencies
-        run: make gotestsum go-cover-treemap setup-envtest helm
+        run: make gotestsum go-cover-treemap setup-envtest
 
       - name: Install go modules for test
         shell: bash

@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 
+	helmclient "github.com/mittwald/go-helm-client"
+	"k8s.io/client-go/rest"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -44,4 +46,37 @@ func getUsedClusterClasses(ctx context.Context, c client.Client, namespace strin
 	}
 
 	return usedClusterClasses, nil
+}
+
+func helmTemplate(restConfig *rest.Config, chartPath, releaseName, namespace string) ([]byte, error) {
+	return helmTemplateWithValues(restConfig, chartPath, releaseName, namespace, "")
+}
+
+func helmTemplateWithValues(restConfig *rest.Config, chartPath, releaseName, namespace, valuesYaml string) ([]byte, error) {
+	opts := &helmclient.RestConfClientOptions{
+		Options:    &helmclient.Options{Namespace: namespace},
+		RestConfig: restConfig,
+	}
+
+	helm, err := helmclient.NewClientFromRestConf(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	chartSpec := helmclient.ChartSpec{
+		ReleaseName: releaseName,
+		ChartName:   chartPath,
+		Namespace:   namespace,
+	}
+
+	if valuesYaml != "" {
+		chartSpec.ValuesYaml = valuesYaml
+	}
+
+	res, err := helm.TemplateChart(&chartSpec, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to run helm template for %q: %w", chartPath, err)
+	}
+
+	return res, nil
 }

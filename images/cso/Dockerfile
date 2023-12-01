@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.12.2 as helm
-
 # Build the manager binary
 FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.20.4@sha256:690e4135bf2a4571a572bfd5ddfa806b1cb9c3dea0446ebadaf32bc2ea09d4f9 as build
 ARG TARGETOS TARGETARCH
@@ -28,7 +26,6 @@ RUN --mount=type=cache,target=/root/.cache --mount=type=cache,target=/go/pkg \
 FROM --platform=${BUILDPLATFORM} docker.io/library/alpine:3.18.0
 WORKDIR /
 COPY --from=build /src/cluster-stack-operator/manager .
-COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
 
 # Use uid of nonroot user (65532) because kubernetes expects numeric user when applying pod security policies
 USER 65532:65532

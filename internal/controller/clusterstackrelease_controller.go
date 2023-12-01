@@ -17,13 +17,10 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -295,37 +292,18 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 }
 
 // templateClusterClassHelmChart templates the clusterClass helm chart.
-func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
+func (r *ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
 	clusterClassChart := releaseAssets.ClusterClassChartPath()
 
 	splittedName := strings.Split(name, clusterstack.Separator)
 	releaseName := strings.Join(splittedName[0:4], clusterstack.Separator)
 
-	template, err := helmTemplate(clusterClassChart, releaseName, namespace)
+	template, err := helmTemplate(r.RESTConfig, clusterClassChart, releaseName, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to template clusterClass helm chart: %w", err)
 	}
 
 	return template, nil
-}
-
-func helmTemplate(chartPath, releaseName, namespace string) ([]byte, error) {
-	helmCommand := "helm"
-	helmArgs := []string{"template"}
-
-	var cmdOutput bytes.Buffer
-
-	helmArgs = append(helmArgs, releaseName, filepath.Base(chartPath), "--namespace", namespace)
-	helmTemplateCmd := exec.Command(helmCommand, helmArgs...)
-	helmTemplateCmd.Stderr = os.Stderr
-	helmTemplateCmd.Dir = filepath.Dir(chartPath)
-	helmTemplateCmd.Stdout = &cmdOutput
-
-	if err := helmTemplateCmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to run helm template for %q: %w", chartPath, err)
-	}
-
-	return cmdOutput.Bytes(), nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
