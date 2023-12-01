@@ -60,7 +60,7 @@ func helmTemplateWithValues(restConfig *rest.Config, chartPath, releaseName, nam
 
 	helm, err := helmclient.NewClientFromRestConf(opts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to set up helm template for %q: %w", chartPath, err)
 	}
 
 	chartSpec := helmclient.ChartSpec{
