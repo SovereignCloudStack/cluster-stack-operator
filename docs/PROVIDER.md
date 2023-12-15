@@ -55,7 +55,7 @@ It makes sense to wait, because otherwise the `ClusterClass` object would be pre
 
 ## Provider Contract
 
-A Cluster Stack Provider Integration ensures that the node images that are released e.g. as build information in a release of a cluster stack, are accessible and ready to use. A user who creates a workload cluster via the the `ClusterClass` object of a release of a cluster stack should have all node images provided.
+A Cluster Stack Provider Integration ensures that the node images that are released e.g. as build information in a release of a cluster stack, are accessible and ready to use. A user who creates a workload cluster via the `ClusterClass` object of a certain cluster stack release should have all node images provided.
 
 
 A Cluster Stack Provider should be built as a separate Kubernetes Operator.
@@ -95,6 +95,8 @@ type ProviderClusterStackReleaseTemplateResource struct {
 }
 ```
 
+Note that `ProviderClusterStackReleaseSpec` can be defined according to the needs of the respective provider integration. The prefix `Provider` should be replaced with the respective provider to build, e.g. "Docker".
+
 ## Implementing a new Provider Integration
 
 // TODO This has to be refined based on https://cluster-api.sigs.k8s.io/developer/providers/implementers-guide/overview.
@@ -102,9 +104,49 @@ type ProviderClusterStackReleaseTemplateResource struct {
 
 ## Some ideas to implement good provider integrations
 
-In case that there are multiple node images which have to be provided to the user, it makes sense to have separate custom resources so that one custom resource is responsible for only one node image. A pattern where there is a `ProviderClusterStackRelease` that creates different `ProviderNodeImageRelease` custom resources, one for each node image that should be built, is advisable. 
+### Lifecycle of node images
 
-The same pattern that is also used in the objects of `ClusterStackRelease` and `ProviderClusterStackRelease` can be also applied here in a way that `ProviderClusterStackRelease` is set on `ready: true` if and only if all `ProviderNodeImageRelease` custom resources are also `ready: true`.
+According to the cluster stack framework, node images are always released as part of a cluster stack release. However, not in every cluster stack release there are actually changes in the node images. Therefore, node images might be re-used.
 
-This pattern also easily allows node images to be re-used. For example, if one cluster stack has the same node images in one version and the next, then they can be re-used and don't have to be necessarily re-created. This pattern can be easily implemented here by setting additional owner references of `ProviderClusterStackRelease` objects to `ProviderNodeImageRelease` objects, if they exist already.
+For example, the cluster stack `docker-ferrol-1-27-v1` and `docker-ferrol-1-27-v2` might both use the node image `docker-ferrol-1-27-worker-v1`. 
+
+Another consideration to take is that the whole lifecycle of node images is implemented. This means that if a cluster stack release is made available by the operator, the node images have to be available as well. If a cluster stack release is not used anymore and so old, that it should not be kept anymore, then the custom resource should be removed from the management cluster, alongside the respective `ClusterClass` as well as the node images. 
+
+However, what if there are multiple cluster stack releases using the same node images, as in the example above? Then, the node images should not be deleted.
+
+### Using the CRD ProviderNodeImageRelease
+
+How can this lifecycle be implemented? By introducing a new custom resource `ProviderNodeImageRelease` for each node image that should be made available to the user. 
+
+The `ProviderClusterStackRelease` fetches the release assets and creates a new custom resource `ProviderNodeImageRelease` for each node image. The naming pattern of the custom resource should be the same as for the other objects, e.g. `docker-ferrol-1-27-mynodeimage-v1`.
+
+The providernodeimagerelease-controller is responsible for the actual work of making the node images available to the user. It should indicate the state of the required operations in the status of the custom resource. 
+
+The providerclusterstackrelease-controller reads the status of all relevant `ProviderNodeImageRelease` objects and sets the status of the `ProviderClusterStackRelease` accordingly, i.e. `status.ready: true` if all node images are built. 
+
+If there are two cluster stack releases using the same node images, then the `ProviderNodeImageRelease` objects exist already and cannot be created twice. This is also not needed. Instead, the `ProviderClusterStackRelease` that comes second, will set its owner reference on all relevant `ProviderNodeImageRelease` objects. 
+
+By setting the owner reference, Kubernetes naturally handles deletion processes correctly. It is expected that the node image should not be available to the user anymore if the custom resource is deleted. Therefore, a proper cleanup should happen on deletion of the `ProviderNodeImageRelease`. 
+
+Thanks to the owner references, a deletion of a `ProviderClusterStackRelease` will either lead to a deletion of `ProviderNodeImageReleases`, or to a removal of the owner reference, if there are other `ProviderClusterStackReleases` that have their owner reference set.
+
+
+### Fetching release assets
+
+There are utility functions to deal with downloading release assets in this repository, currently under pkg/github/client. 
+
+These functions can be used for provider integrations to download release assets that are needed. 
+
+### Understanding metadata.yaml
+
+The metadata.yaml file is meant to show versioning information. There is a library under pkg/release to read from the metadata.yaml file. The versioning information can be used to check for the version of the node images.
+
+This is necessary to create the respective `ProviderNodeImageRelease` objects, as they should contain the version in their names.
+
+
+### node-images.yaml
+
+The node-images.yaml file might exist to show a full list of available node images in a cluster stack release. This list might be either used to directly make all node images available, or to validate a user input if the user is allowed to specify a certain list of node images to be used.
+
+The latter might be implemented through the spec of `ProviderClusterStackRelease`, where a list of node images could indicate that a sub-list of node images should be made available.
 
