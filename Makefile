@@ -328,8 +328,8 @@ test-unit: $(SETUP_ENVTEST) $(GOTESTSUM) $(HELM) ## Run unit
 .PHONY: test-integration-github
 test-integration-github: $(SETUP_ENVTEST) $(GOTESTSUM)
 	@mkdir -p $(shell pwd)/.coverage
-	KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=../.coverage/junit.xml --format testname -- -mod=vendor \
-	-covermode=atomic -coverprofile=../.coverage/cover.out -p=1  ./internal/test/integration/github/...
+	KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
+	-covermode=atomic -coverprofile=.coverage/cover.out -p=1  ./internal/test/integration/github/...
 
 ##@ Verify
 ##########
