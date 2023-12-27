@@ -19,12 +19,20 @@ require (
 	sigs.k8s.io/cluster-api v1.5.2
 	sigs.k8s.io/cluster-api/test v1.5.2
 	sigs.k8s.io/controller-runtime v0.15.1
+	sigs.k8s.io/kind v0.20.0
 )
 
 require (
+	github.com/BurntSushi/toml v1.0.0 // indirect
+	github.com/alessio/shellescape v1.4.1 // indirect
 	github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1 // indirect
+	github.com/google/safetext v0.0.0-20220905092116-b49f7bc46da2 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/stretchr/objx v0.5.1 // indirect
 	k8s.io/cluster-bootstrap v0.27.2 // indirect
 )
