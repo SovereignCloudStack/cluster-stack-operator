@@ -319,17 +319,27 @@ $(WORKER_CLUSTER_KUBECONFIG):
 
 KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env --bin-dir $(abspath $(TOOLS_BIN_DIR)) -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
 
+.PHONY: test-integration
+test-integration: test-integration-workloadcluster  test-integration-github
+	echo done
+
 .PHONY: test-unit
 test-unit: $(SETUP_ENVTEST) $(GOTESTSUM) $(HELM) ## Run unit
 	@mkdir -p $(shell pwd)/.coverage
 	CREATE_KIND_CLUSTER=true KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
 	-covermode=atomic -coverprofile=.coverage/cover.out -p=4 ./internal/controller/...
 
+.PHONY: test-integration-workloadcluster
+test-integration-workloadcluster: $(SETUP_ENVTEST) $(GOTESTSUM)
+	@mkdir -p $(shell pwd)/.coverage
+	CREATE_KIND_CLUSTER=true KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
+	-covermode=atomic -coverprofile=.coverage/cover.out -p=1  ./internal/test/integration/workloadcluster/...
+
 .PHONY: test-integration-github
 test-integration-github: $(SETUP_ENVTEST) $(GOTESTSUM)
 	@mkdir -p $(shell pwd)/.coverage
-	CREATE_KIND_CLUSTER=false KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=../.coverage/junit.xml --format testname -- -mod=vendor \
-	-covermode=atomic -coverprofile=../.coverage/cover.out -p=1  ./internal/test/integration/github/...
+	CREATE_KIND_CLUSTER=false KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
+	-covermode=atomic -coverprofile=.coverage/cover.out -p=1  ./internal/test/integration/github/...
 
 ##@ Verify
 ##########
