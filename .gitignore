@@ -31,7 +31,7 @@ temp
 # Tilt files.
 .tiltbuild
 /tilt.d
-tilt-settings.json
+tilt-settings.yaml
 tilt_config.json
 .clusterstack.yaml
 .cluster.yaml
@@ -81,3 +81,4 @@ main
 # helm generated yamls
 *.tgz.yaml
 *.build.yaml
+.release

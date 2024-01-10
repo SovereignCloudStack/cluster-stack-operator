@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - image: ghcr.io/sovereigncloudstack/cso-staging:dev
+          name: manager
+          args:
+            - --leader-elect=true
+            - --release-dir=/tmp
+            - --local=true

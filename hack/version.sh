@@ -64,7 +64,7 @@ version::get_version_vars() {
         fi
     fi
 
-    GIT_RELEASE_TAG=$(git describe --abbrev=0 --tags)
+    GIT_RELEASE_TAG=$(git describe --abbrev=0 --tags 2>/dev/null)
 }
 
 # borrowed from k8s.io/hack/lib/version.sh and modified
