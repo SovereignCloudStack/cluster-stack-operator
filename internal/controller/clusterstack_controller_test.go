@@ -357,7 +357,7 @@ func TestGetClusterStackReleasesInSpec(t *testing.T) {
 		Provider:          "docker",
 		Name:              "ferrol",
 		KubernetesVersion: "1.21",
-		Versions:          []string{"v1", "v2", "v3-alpha-0"},
+		Versions:          []string{"v1", "v2", "v3-alpha.0"},
 	}
 
 	result, err := getClusterStackReleasesInSpec(spec)

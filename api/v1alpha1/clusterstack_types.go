@@ -39,7 +39,7 @@ type ClusterStackSpec struct {
 
 	// Channel specifies the release channel of the cluster stack. Defaults to 'stable'.
 	// +kubebuilder:default:=stable
-	// +kubebuilder:validation:enum=stable;alpha;beta;rc
+	// +kubebuilder:validation:Enum=stable;custom
 	Channel version.Channel `json:"channel,omitempty"`
 
 	// Versions is a list of version of the cluster stack that should be available in the management cluster.

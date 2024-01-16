@@ -509,7 +509,7 @@ func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.Clust
 	// filter the ones that are ready
 	for _, csr := range clusterStackReleases {
 		if csr.Status.Ready {
-			cs, err := clusterstack.NewFromString(csr.Name)
+			cs, err := clusterstack.NewFromClusterStackReleaseProperties(csr.Name)
 			if err != nil {
 				return nil, "", fmt.Errorf("failed to get clusterstack from ClusterStackRelease.Name %q: %w", csr.Name, err)
 			}
@@ -624,7 +624,7 @@ func matchesOwnerRef(a *metav1.OwnerReference, clusterStack *csov1alpha1.Cluster
 }
 
 func matchesSpec(str string, spec *csov1alpha1.ClusterStackSpec) (clusterstack.ClusterStack, bool, error) {
-	csObject, err := clusterstack.NewFromString(str)
+	csObject, err := clusterstack.NewFromClusterStackReleaseProperties(str)
 	if err != nil {
 		return clusterstack.ClusterStack{}, false, fmt.Errorf("failed to get clusterstack object from string %q: %w", str, err)
 	}
