@@ -6,6 +6,7 @@ on: # yamllint disable-line rule:truthy
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
+      - addons
       - "releases/**"
     paths:
       - "**.go"
