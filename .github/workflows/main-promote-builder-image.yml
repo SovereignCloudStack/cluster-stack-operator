@@ -3,6 +3,7 @@ on: # yamllint disable-line rule:truthy
   push:
     branches:
       - main
+      - addons
     paths:
       - "images/builder/Dockerfile"
 jobs:
