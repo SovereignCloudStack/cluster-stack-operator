@@ -44,6 +44,9 @@ kindV1Alpha4Cluster:
   nodes:
   - role: control-plane
     image: kindest/node:${CLUSTER_VERSION}
+    extraMounts:
+    - hostPath: /var/run/docker.sock
+      containerPath: /var/run/docker.sock
   networking:
     podSubnet: "10.244.0.0/16"
     serviceSubnet: "10.96.0.0/12"
