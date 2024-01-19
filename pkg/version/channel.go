@@ -23,18 +23,12 @@ type Channel string
 const (
 	// ChannelStable is the stable channel.
 	ChannelStable = Channel("stable")
-	// ChannelAlpha is the alpha channel.
-	ChannelAlpha = Channel("alpha")
-	// ChannelBeta is the beta channel.
-	ChannelBeta = Channel("beta")
-	// ChannelRC is the rc channel.
-	ChannelRC = Channel("rc")
+	// ChannelCustom is the custom channel where git hash is used in the versioning.
+	ChannelCustom = Channel("custom")
 )
 
 // IsValid returns true if the release channel is valid.
 func (c Channel) IsValid() bool {
 	return c == ChannelStable ||
-		c == ChannelAlpha ||
-		c == ChannelBeta ||
-		c == ChannelRC
+		c == ChannelCustom
 }

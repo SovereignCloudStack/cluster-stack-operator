@@ -55,8 +55,57 @@ var (
 	ErrInvalidName = fmt.Errorf("invalid name")
 )
 
-// NewFromString returns a ClusterStack based on a cluster stack string.
-func NewFromString(str string) (ClusterStack, error) {
+// NewFromClusterClassProperties returns a ClusterStack based on a cluster stack string.
+// e.g. - "docker-ferrol-1-27-v1", "docker-ferrol-1-27-v1-alpha.1", etc.
+func NewFromClusterClassProperties(str string) (ClusterStack, error) {
+	splitted := strings.Split(str, Separator)
+	if len(splitted) != 5 && len(splitted) != 6 {
+		return ClusterStack{}, ErrInvalidFormat
+	}
+
+	clusterStack := ClusterStack{
+		Provider: splitted[0],
+		Name:     splitted[1],
+	}
+
+	if clusterStack.Provider == "" {
+		return ClusterStack{}, ErrInvalidProvider
+	}
+
+	if clusterStack.Name == "" {
+		return ClusterStack{}, ErrInvalidName
+	}
+
+	var err error
+
+	clusterStack.KubernetesVersion, err = kubernetesversion.New(splitted[2], splitted[3])
+	if err != nil {
+		return ClusterStack{}, fmt.Errorf("failed to create Kubernetes version from %s-%s: %w", splitted[2], splitted[3], err)
+	}
+
+	var versionString string
+	if len(splitted) == 5 {
+		// e.g. myprovider-myclusterstack-1-26-v1
+		versionString = splitted[4]
+	} else if len(splitted) == 6 {
+		// e.g. myprovider-myclusterstack-1-26-v1-alpha.0
+		versionString = strings.Join(splitted[4:6], Separator)
+	}
+
+	// version string like v1-alpha.0
+	v, err := version.New(versionString)
+	if err != nil {
+		return ClusterStack{}, fmt.Errorf("failed to create version from %s: %w", versionString, err)
+	}
+
+	clusterStack.Version = v
+
+	return clusterStack, nil
+}
+
+// NewFromClusterStackReleaseProperties returns a ClusterStack based on a cluster stack string.
+// e.g. - "docker-ferrol-1-27-v1", "docker-ferrol-1-27-v1-alpha-1", etc.
+func NewFromClusterStackReleaseProperties(str string) (ClusterStack, error) {
 	splitted := strings.Split(str, Separator)
 	if len(splitted) != 5 && len(splitted) != 7 {
 		return ClusterStack{}, ErrInvalidFormat
@@ -91,7 +140,8 @@ func NewFromString(str string) (ClusterStack, error) {
 		versionString = strings.Join(splitted[4:7], Separator)
 	}
 
-	v, err := version.New(versionString)
+	// version string like v1-alpha-0
+	v, err := version.ParseVersionString(versionString)
 	if err != nil {
 		return ClusterStack{}, fmt.Errorf("failed to create version from %s: %w", versionString, err)
 	}
@@ -101,7 +151,8 @@ func NewFromString(str string) (ClusterStack, error) {
 	return clusterStack, nil
 }
 
-// New returns a ClusterStack based on a cluster stack string.
+// New returns a ClusterStack based on a cluster stack properties and the version is in the form of -
+// "v1", "v1-alpha.1", etc.
 func New(provider, name, kubernetesVersion, csVersion string) (ClusterStack, error) {
 	k8sVersion, err := kubernetesversion.NewFromString(kubernetesVersion)
 	if err != nil {

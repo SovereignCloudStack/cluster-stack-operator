@@ -24,7 +24,8 @@ import (
 	"strings"
 
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
-	"gopkg.in/yaml.v2"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/version"
+	"gopkg.in/yaml.v3"
 )
 
 // Release contains information for ClusterStack release.
@@ -57,8 +58,9 @@ const (
 func New(tag, downloadPath string) (Release, bool, error) {
 	// downloadPath is the path where the release is downloaded.
 	// The path is of the form: <downloadPath>/<clusterStackSuffix>/<tag>/
+	// For example: /tmp/downloads/cluster-stacks/docker-ferrol-1-26-v2/
 	downloadPath = filepath.Join(downloadPath, clusterStackSuffix, tag)
-	cs, err := clusterstack.NewFromString(tag)
+	cs, err := clusterstack.NewFromClusterStackReleaseProperties(tag)
 	if err != nil {
 		return Release{}, false, fmt.Errorf("failed to parse cluster stack release: %w", err)
 	}
@@ -92,6 +94,18 @@ func New(tag, downloadPath string) (Release, bool, error) {
 	return rel, false, nil
 }
 
+// ConvertFromClusterClassToClusterStackFormat converts `docker-ferrol-1-27-v0-sha.3960147` way to
+// `docker-ferrol-1-27-v0-sha-3960147`.
+func ConvertFromClusterClassToClusterStackFormat(input string) string {
+	parts := strings.Split(input, ".")
+
+	if len(parts) == 2 {
+		return fmt.Sprintf("%s-%s", parts[0], parts[1])
+	}
+
+	return input
+}
+
 func ensureMetadata(downloadPath, metadataFileName string) (Metadata, error) {
 	// Read the metadata.yaml file from the release.
 	metadataPath := filepath.Join(downloadPath, metadataFileName)
@@ -106,6 +120,25 @@ func ensureMetadata(downloadPath, metadataFileName string) (Metadata, error) {
 	if err = yaml.Unmarshal(f, &metadata); err != nil {
 		return Metadata{}, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
+
+	// Normalize the versions of metadata from v1-alpha.1 to v1-alpha-1 format.
+	metaClusterStackVersion, err := version.New(metadata.Versions.ClusterStack)
+	if err != nil {
+		return Metadata{}, fmt.Errorf("failed to parse ClusterStack version from metadata: %w", err)
+	}
+	metadata.Versions.ClusterStack = metaClusterStackVersion.String()
+
+	metaClusterAddonVersion, err := version.New(metadata.Versions.Components.ClusterAddon)
+	if err != nil {
+		return Metadata{}, fmt.Errorf("failed to parse ClusterAddon version from metadata: %w", err)
+	}
+	metadata.Versions.Components.ClusterAddon = metaClusterAddonVersion.String()
+
+	metaNodeImageVersion, err := version.New(metadata.Versions.Components.NodeImage)
+	if err != nil {
+		return Metadata{}, fmt.Errorf("failed to parse NodeImage version from metadata: %w", err)
+	}
+	metadata.Versions.Components.NodeImage = metaNodeImageVersion.String()
 
 	return metadata, nil
 }
@@ -165,13 +198,15 @@ func (r *Release) Validate() error {
 
 // clusterAddonChartName returns the helm chart name for cluster addon.
 func (r *Release) clusterAddonChartName() string {
-	return fmt.Sprintf("%s-%s-%s-cluster-addon-%s", r.ClusterStack.Provider, r.ClusterStack.Name, r.ClusterStack.KubernetesVersion, r.Meta.Versions.Components.ClusterAddon)
+	clusterAddonVersion, _ := version.ParseVersionString(r.Meta.Versions.Components.ClusterAddon)
+	return fmt.Sprintf("%s-%s-%s-cluster-addon-%s", r.ClusterStack.Provider, r.ClusterStack.Name, r.ClusterStack.KubernetesVersion, clusterAddonVersion.StringWithDot())
 }
 
 // ClusterAddonChartPath returns the helm chart name from the given path.
 func (r *Release) ClusterAddonChartPath() string {
 	// we ignore the error here, since we already checked for the presence of the chart.
-	path, _ := r.helmChartNamePath(r.clusterAddonChartName())
+	name := r.clusterAddonChartName()
+	path, _ := r.helmChartNamePath(name)
 	return path
 }
 
@@ -182,7 +217,7 @@ func (r *Release) ClusterAddonValuesPath() string {
 
 // clusterClassChartName returns the helm chart name for cluster class.
 func (r *Release) clusterClassChartName() string {
-	return fmt.Sprintf("%s-%s-%s-cluster-class-%s", r.ClusterStack.Provider, r.ClusterStack.Name, r.ClusterStack.KubernetesVersion, r.ClusterStack.Version.String())
+	return fmt.Sprintf("%s-%s-%s-cluster-class-%s", r.ClusterStack.Provider, r.ClusterStack.Name, r.ClusterStack.KubernetesVersion, r.ClusterStack.Version.StringWithDot())
 }
 
 // ClusterClassChartPath returns the absolute helm chart path for cluster class.

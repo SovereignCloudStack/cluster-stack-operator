@@ -27,7 +27,7 @@ import (
 
 // Summary returns a ClusterStackReleaseSummary object from a clusterStackRelease.
 func Summary(csr *csov1alpha1.ClusterStackRelease) (csov1alpha1.ClusterStackReleaseSummary, error) {
-	clusterStack, err := clusterstack.NewFromString(csr.Name)
+	clusterStack, err := clusterstack.NewFromClusterStackReleaseProperties(csr.Name)
 	if err != nil {
 		return csov1alpha1.ClusterStackReleaseSummary{}, fmt.Errorf("failed to create clusterStack from string %s: %w", csr.Name, err)
 	}
