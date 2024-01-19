@@ -18,7 +18,7 @@ Operator development requires a lot of iteration, and the “build, tag, push, u
 ```shell
 make tilt-up
 ```
-> To access the Tilt UI please go to: `http://localhost:10350`
+> To access the Tilt UI please go to: `http://localhost:10351`
 
 
 You should make sure that everything in the UI looks green. If not, e.g. if the clusterstack has not been synced, you can trigger the Tilt workflow again. In case of the clusterstack button this might be necessary, as it cannot be applied right after startup of the cluster and fails. Tilt unfortunately does not include a waiting period.

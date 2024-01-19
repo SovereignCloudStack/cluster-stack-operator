@@ -11,7 +11,7 @@ spec:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
   topology:
-    class: docker-ferrol-1-27-v1
+    class: docker-ferrol-1-27-v2
     controlPlane:
       metadata: {}
       replicas: 1
