@@ -11,4 +11,4 @@ spec:
   autoSubscribe: false
   noProvider: true
   versions:
-    - v1
+    - v2

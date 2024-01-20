@@ -1,7 +1,7 @@
 apiVersion: metadata.clusterstack.x-k8s.io/v1alpha1
 versions:
-  clusterStack: v1
+  clusterStack: v2
   kubernetes: v1.27.3
   components:
-    clusterAddon: v1
+    clusterAddon: v2
     nodeImage: v1

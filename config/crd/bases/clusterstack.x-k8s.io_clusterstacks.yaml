@@ -75,6 +75,9 @@ spec:
                 default: stable
                 description: Channel specifies the release channel of the cluster
                   stack. Defaults to 'stable'.
+                enum:
+                - stable
+                - custom
                 type: string
               kubernetesVersion:
                 description: KubernetesVersion is the Kubernetes version in the format

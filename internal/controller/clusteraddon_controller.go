@@ -151,7 +151,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// cluster is ready, so we set a condition and can continue as well
 	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterReadyCondition)
 
-	releaseAsset, download, err := release.New(cluster.Spec.Topology.Class, r.ReleaseDirectory)
+	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.Class), r.ReleaseDirectory)
 	if err != nil {
 		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil

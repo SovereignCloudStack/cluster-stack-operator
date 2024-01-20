@@ -25,6 +25,9 @@ import (
 	"path"
 	"path/filepath"
 	goruntime "runtime"
+	"strconv"
+	"strings"
+	"time"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/test/helpers/builder"
@@ -39,8 +42,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -50,6 +55,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	kind "sigs.k8s.io/kind/pkg/cluster"
 )
 
 func init() {
@@ -76,6 +82,9 @@ const (
 
 	// DefaultPodNamespace is default the namespace for the envtest resources.
 	DefaultPodNamespace = "cso-system"
+
+	// defaultKindClusterNodeImage is default node image for kind cluster.
+	defaultKindClusterNodeImage = "kindest/node:v1.26.6@sha256:6e2d8b28a5b601defe327b98bd1c2d1930b49e5d8c512e1895099e4504007adb" //#nosec
 )
 
 const (
@@ -130,11 +139,13 @@ type (
 	TestEnvironment struct {
 		ctrl.Manager
 		client.Client
-		KubeConfig          string
-		Config              *rest.Config
-		cancel              context.CancelFunc
-		GitHubClientFactory githubclient.Factory
-		GitHubClient        *githubmocks.Client
+		KubeConfig            string
+		Config                *rest.Config
+		cancel                context.CancelFunc
+		kind                  *kind.Provider
+		WorkloadClusterClient *kubernetes.Clientset
+		GitHubClientFactory   githubclient.Factory
+		GitHubClient          *githubmocks.Client
 	}
 )
 
@@ -177,6 +188,45 @@ func NewTestEnvironment() *TestEnvironment {
 		GitHubClient:        githubClient,
 	}
 
+	if ifCreateKind() {
+		// Create kind cluster
+		klog.Info("creating kind cluster")
+
+		cluster := kind.NewProvider(kind.ProviderWithDocker())
+		err = cluster.Create(
+			DefaultKindClusterName,
+			kind.CreateWithWaitForReady(time.Minute*2),
+			kind.CreateWithNodeImage(defaultKindClusterNodeImage),
+		)
+		if err != nil {
+			klog.Fatalf("unable to create kind cluster: %s", err)
+		}
+		klog.Infof("kind cluster created: %s", DefaultKindClusterName)
+
+		// Get kind cluster kubeconfig
+		testEnv.KubeConfig, err = cluster.KubeConfig(DefaultKindClusterName, false)
+		if err != nil {
+			klog.Fatalf("unable to get kubeconfig: %s", err)
+		}
+
+		testEnv.kind = cluster
+
+		clientCfg, err := clientcmd.NewClientConfigFromBytes([]byte(testEnv.KubeConfig))
+		if err != nil {
+			klog.Fatalf("failed to create client config from secret: %v", err)
+		}
+
+		restConfig, err := clientCfg.ClientConfig()
+		if err != nil {
+			klog.Fatalf("failed to get rest config from client config: %v", err)
+		}
+
+		testEnv.WorkloadClusterClient, err = kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			klog.Fatalf("failed to get client set from rest config: %v", err)
+		}
+	}
+
 	return testEnv
 }
 
@@ -192,6 +242,17 @@ func (t *TestEnvironment) StartManager(ctx context.Context) error {
 
 // Stop stops the manager and cancels the context.
 func (t *TestEnvironment) Stop() error {
+	if ifCreateKind() {
+		klog.Info("Deleting kind cluster")
+		err := t.kind.Delete(DefaultKindClusterName, "./kubeconfig")
+		if err != nil {
+			if !strings.Contains(err.Error(), "failed to update kubeconfig:") {
+				klog.Errorf("unable to delete kind cluster: %s", err)
+			}
+		}
+		klog.Info("successfully deleted kind cluster")
+	}
+
 	t.cancel()
 	if err := env.Stop(); err != nil {
 		return fmt.Errorf("failed to stop environment; %w", err)
@@ -305,4 +366,19 @@ func envOr(envKey, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// IfCreateKind returns that to create kind cluster or not.
+func ifCreateKind() bool {
+	createKind, ok := os.LookupEnv("CREATE_KIND_CLUSTER")
+	// default to true if not set
+	if createKind == "" || !ok {
+		createKind = "true"
+	}
+	ifCreate, err := strconv.ParseBool(createKind)
+	if err != nil {
+		klog.Fatalf("unable to parse CREATE_KIND_CLUSTER value: %s", err)
+	}
+
+	return ifCreate
 }
