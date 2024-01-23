@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-runtime-sdk
+spec:
+  template:
+    spec:
+      containers:
+        - image: ghcr.io/sovereigncloudstack/runtime-sdk-staging:latest
+          name: manager

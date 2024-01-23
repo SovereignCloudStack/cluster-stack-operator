@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-runtime-sdk-svc
+  # namespace: runtimesdk
+spec:
+  type: ClusterIP
+  selector:
+    app: test-runtime-sdk
+  ports:
+    - port: 443
+      targetPort: 9443
