@@ -29,8 +29,6 @@
   color: "ffc300"
 - name: update/github-action
   color: "ffc300"
-- name: update/helm
-  color: "ffc300"
 - name: update/go
   color: "ffc300"
 # Semantic Type

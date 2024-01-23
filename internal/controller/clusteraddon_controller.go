@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"text/template"
 	"time"
@@ -270,12 +269,12 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	clusterAddonChart := in.clusterAddonChartPath
 	var shouldRequeue bool
 
-	buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client)
+	clusterAddonTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client)
 	if err != nil {
 		return false, fmt.Errorf("failed to build template from cluster addon values: %w", err)
 	}
 
-	helmTemplate, err := helmTemplateClusterAddon(clusterAddonChart, buildTemplate)
+	helmTemplate, err := helmTemplateWithClusterAddonTemplate(in.restConfig, clusterAddonChart, clusterAddonTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -291,10 +290,10 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	return shouldRequeue, nil
 }
 
-func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client) ([]byte, error) {
+func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client) (string, error) {
 	data, err := os.ReadFile(filepath.Clean(addonValuePath))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read the file %s: %w", addonValuePath, err)
+		return "", fmt.Errorf("failed to read the file %s: %w", addonValuePath, err)
 	}
 
 	references := map[string]corev1.ObjectReference{
@@ -316,62 +315,39 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 
 	valueLookUp, err := initializeBuiltins(ctx, c, references, cluster)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize builtins: %w", err)
+		return "", fmt.Errorf("failed to initialize builtins: %w", err)
 	}
 
 	tmpl, err := template.New("cluster-addon-values" + "-" + cluster.GetName()).
 		Funcs(sprig.TxtFuncMap()).
 		Parse(string(data))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new template: %w", err)
+		return "", fmt.Errorf("failed to create new template: %w", err)
 	}
 
 	var buffer bytes.Buffer
 
 	if err := tmpl.Execute(&buffer, valueLookUp); err != nil {
-		return nil, fmt.Errorf("failed to execute template string %q on cluster %q: %w", string(data), cluster.GetName(), err)
+		return "", fmt.Errorf("failed to execute template string %q on cluster %q: %w", string(data), cluster.GetName(), err)
 	}
 
 	expandedTemplate := buffer.String()
 	var unmarhallData interface{}
 	err = yaml.Unmarshal([]byte(expandedTemplate), &unmarhallData)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal expanded template: %w", err)
+		return "", fmt.Errorf("unmarshal expanded template: %w", err)
 	}
 
 	values, ok := unmarhallData.(map[interface{}]interface{})["values"].(string)
 	if !ok {
-		return nil, fmt.Errorf("key 'values' not found in template of cluster addon helm chart")
+		return "", fmt.Errorf("key 'values' not found in template of cluster addon helm chart")
 	}
 
-	return []byte(values), nil
+	return values, nil
 }
 
-// helmTemplateClusterAddon takes the helm chart path and cluster addon values and generates template yaml file
-// in the same path as the chart.
-// Then it returns the path of the generated yaml file.
-// Example: helm template /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz
-// The return yaml file path will be /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz.yaml.
-func helmTemplateClusterAddon(chartPath string, helmTemplate []byte) ([]byte, error) {
-	helmCommand := "helm"
-	helmArgs := []string{"template"}
-
-	input := bytes.NewBuffer(helmTemplate)
-
-	var cmdOutput bytes.Buffer
-
-	helmArgs = append(helmArgs, "cluster-addon", filepath.Base(chartPath), "--namespace", clusterAddonNamespace, "-f", "-")
-	helmTemplateCmd := exec.Command(helmCommand, helmArgs...)
-	helmTemplateCmd.Stderr = os.Stderr
-	helmTemplateCmd.Dir = filepath.Dir(chartPath)
-	helmTemplateCmd.Stdout = &cmdOutput
-	helmTemplateCmd.Stdin = input
-
-	if err := helmTemplateCmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to run helm template for %q: %w", chartPath, err)
-	}
-
-	return cmdOutput.Bytes(), nil
+func helmTemplateWithClusterAddonTemplate(restConfig *rest.Config, clusterAddonChart, clusterAddonTemplate string) ([]byte, error) {
+	return helmTemplateWithValues(restConfig, clusterAddonChart, "cluster-addon", clusterAddonNamespace, clusterAddonTemplate)
 }
 
 // initializeBuiltins takes a map of keys to object references, attempts to get the referenced objects, and returns a map of keys to the actual objects.
