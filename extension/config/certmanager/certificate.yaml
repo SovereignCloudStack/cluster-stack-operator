@@ -1,0 +1,23 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: runtime-sdk-selfsigned-issuer
+  # namespace: runtimesdk
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: serving-cert
+  # namespace: runtimesdk
+spec:
+  dnsNames:
+    - test-runtime-sdk-svc.runtimesdk.svc
+    - test-runtime-sdk-svc.runtimesdk.svc.cluster.local
+    - localhost
+  issuerRef:
+    kind: Issuer
+    name: runtime-sdk-selfsigned-issuer
+  secretName: test-runtime-sdk-svc-cert
