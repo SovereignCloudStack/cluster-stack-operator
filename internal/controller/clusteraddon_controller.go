@@ -269,12 +269,12 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	clusterAddonChart := in.clusterAddonChartPath
 	var shouldRequeue bool
 
-	buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client)
+	clusterAddonTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client)
 	if err != nil {
 		return false, fmt.Errorf("failed to build template from cluster addon values: %w", err)
 	}
 
-	helmTemplate, err := helmTemplateWithValues(in.restConfig, clusterAddonChart, "cluster-addon", clusterAddonNamespace, buildTemplate)
+	helmTemplate, err := helmTemplateWithClusterAddonTemplate(in.restConfig, clusterAddonChart, clusterAddonTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -344,6 +344,10 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 	}
 
 	return values, nil
+}
+
+func helmTemplateWithClusterAddonTemplate(restConfig *rest.Config, clusterAddonChart, clusterAddonTemplate string) ([]byte, error) {
+	return helmTemplateWithValues(restConfig, clusterAddonChart, "cluster-addon", clusterAddonNamespace, clusterAddonTemplate)
 }
 
 // initializeBuiltins takes a map of keys to object references, attempts to get the referenced objects, and returns a map of keys to the actual objects.
