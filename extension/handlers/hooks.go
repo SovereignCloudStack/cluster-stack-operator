@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/exp/runtime/hooks/api/v1alpha1"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -33,7 +34,7 @@ type ExtensionHandler struct {
 	client client.Client
 }
 
-func NewExtensionHandlers(client client.Client) *ExtensionHandler {
+func NewExtensionHandlers(client client.Client, scheme *runtime.Scheme) *ExtensionHandler {
 	return &ExtensionHandler{
 		client: client,
 	}
@@ -92,6 +93,7 @@ func (e *ExtensionHandler) DoAfterControlPlaneInitialized(ctx context.Context, r
 	key := types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", request.Cluster.GetName()), Namespace: request.Cluster.GetNamespace()}
 	clusterAddon := &csov1alpha1.ClusterAddon{}
 	if err := e.client.Get(ctx, key, clusterAddon); err != nil {
+		log.Error(err, "failed to get the cluster addon")
 		response.SetStatus(runtimehooksv1.ResponseStatusFailure)
 		response.SetMessage(err.Error())
 		return
@@ -109,6 +111,8 @@ func (e *ExtensionHandler) DoAfterControlPlaneInitialized(ctx context.Context, r
 			response.SetMessage(fmt.Errorf("failed to patch clusterAddon: %w", err).Error())
 		}
 	}()
+
+	clusterAddon.Spec.Hook = "AfterControlPlaneInitialized"
 
 	response.SetStatus(runtimehooksv1.ResponseStatusSuccess)
 	return
