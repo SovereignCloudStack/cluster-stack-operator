@@ -1,0 +1,22 @@
+apiVersion: clusteraddonconfig.x-k8s.io/v1alpha1
+clusterAddonVersion: clusteraddons.clusterstack.x-k8s.io/v1alpha1
+addonStages:
+  AfterControlPlaneInitialized:
+    - helmChartName: metrics-server
+      action: apply
+  BeforeClusterUpgrade:
+    - helmChartName: ngnix
+      action: apply
+      waitForPostCondition:
+        objects:
+          - key: msdeployment
+            apiVersion: apps/v1
+            kind: Deployment
+            name: metrics-server
+            namespace: kube-system
+          - key: ngnix
+            apiVersion: apps/v1
+            kind: Deployment
+            name: cluster-addon-ngnix
+            namespace: kube-system
+        conditions: msdeployment.spec.replicas == ngnix.spec.replicas
