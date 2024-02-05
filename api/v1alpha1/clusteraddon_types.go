@@ -27,6 +27,17 @@ const (
 	ClusterAddonFinalizer = "clusteraddon.clusterstack.x-k8s.io"
 )
 
+// HelmChartStatusConditions defines the status of helm chart in the cluster addon.
+type HelmChartStatusConditions string
+
+var (
+	None                    = HelmChartStatusConditions("")
+	WaitingForPreCondition  = HelmChartStatusConditions("waitingForPreCondition")
+	ApplyingOrDeleting      = HelmChartStatusConditions("applyingOrDeleting")
+	WaitingForPostCondition = HelmChartStatusConditions("waitingForPostCondition")
+	Done                    = HelmChartStatusConditions("done")
+)
+
 // ClusterAddonSpec defines the desired state of a ClusterAddon object.
 type ClusterAddonSpec struct {
 	// ClusterStack is the full string <provider>-<name>-<Kubernetes version>-<version> that will be filled with the cluster stack that
@@ -38,6 +49,10 @@ type ClusterAddonSpec struct {
 	// +optional
 	Version string `json:"version,omitempty"`
 
+	// Hook specifies the runtime hook for the Cluster event.
+	// +optional
+	Hook string `json:"hook,omitempty"`
+
 	// ClusterRef is the reference to the clusterv1.Cluster object that corresponds to the workload cluster where this
 	// controller applies the cluster addons.
 	ClusterRef *corev1.ObjectReference `json:"clusterRef"`
@@ -48,6 +63,14 @@ type ClusterAddonStatus struct {
 	// Resources specifies the status of the resources that this object administrates.
 	// +optional
 	Resources []*Resource `json:"resources,omitempty"`
+
+	// CurrentHook specifies the current running Hook.
+	// +optional
+	CurrentHook string `json:"currentHook,omitempty"`
+
+	// HelmChartStatus defines the status of helm chart in the cluster addon.
+	// +optional
+	HelmChartStatus map[string]HelmChartStatusConditions `json:"helmChartStatus,omitempty"`
 
 	// +optional
 	// +kubebuilder:default:=false

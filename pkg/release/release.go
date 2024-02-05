@@ -45,7 +45,12 @@ var (
 )
 
 const (
-	clusterStackSuffix     = "cluster-stacks"
+	// ClusterStackSuffix is the directory name where cluster stacks are there.
+	ClusterStackSuffix = "cluster-stacks"
+
+	// ClusterAddonYamlName is the file name where clusteraddon config is there.
+	ClusterAddonYamlName = "clusteraddon.yaml"
+
 	metadataFileName       = "metadata.yaml"
 	clusterAddonValuesName = "cluster-addon-values.yaml"
 )
@@ -57,7 +62,7 @@ const (
 func New(tag, downloadPath string) (Release, bool, error) {
 	// downloadPath is the path where the release is downloaded.
 	// The path is of the form: <downloadPath>/<clusterStackSuffix>/<tag>/
-	downloadPath = filepath.Join(downloadPath, clusterStackSuffix, tag)
+	downloadPath = filepath.Join(downloadPath, ClusterStackSuffix, tag)
 	cs, err := clusterstack.NewFromString(tag)
 	if err != nil {
 		return Release{}, false, fmt.Errorf("failed to parse cluster stack release: %w", err)
@@ -124,13 +129,20 @@ func (r *Release) CheckHelmCharts() error {
 		return fmt.Errorf("failed to verify the cluster addon chart path %s with error: %w", clusterClassChartPath, err)
 	}
 
-	// check if the cluster addon values file is present.
-	valuesPath := filepath.Join(r.LocalDownloadPath, clusterAddonValuesName)
-	if _, err := os.Stat(valuesPath); err != nil {
-		return fmt.Errorf("failed to verify the cluster addon values path %s with error: %w", valuesPath, err)
+	clusterAddonPath := filepath.Join(r.LocalDownloadPath, ClusterAddonYamlName)
+	if _, err := os.Stat(clusterAddonPath); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to verify the clusteraddon.yaml path %s with error: %w", clusterAddonPath, err)
+		}
+
+		// check if the cluster addon values file is present.
+		valuesPath := filepath.Join(r.LocalDownloadPath, clusterAddonValuesName)
+		if _, err := os.Stat(valuesPath); err != nil {
+			return fmt.Errorf("failed to verify the cluster addon values path %s with error: %w", valuesPath, err)
+		}
 	}
 
-	// check if the cluster class chart is present.
+	// check if the cluster addon chart is present.
 	clusterAddonChartName := r.clusterAddonChartName()
 	clusterAddonChartPath, err := r.helmChartNamePath(clusterAddonChartName)
 	if err != nil {
@@ -161,6 +173,18 @@ func (r *Release) Validate() error {
 		return fmt.Errorf("failed to validate metadata: %w", err)
 	}
 	return nil
+}
+
+// ConvertFromClusterClassToClusterStackFormat converts `docker-ferrol-1-27-v0-sha.3960147` way to
+// `docker-ferrol-1-27-v0-sha-3960147`.
+func ConvertFromClusterClassToClusterStackFormat(input string) string {
+	parts := strings.Split(input, ".")
+
+	if len(parts) == 2 {
+		return fmt.Sprintf("%s-%s", parts[0], parts[1])
+	}
+
+	return input
 }
 
 // clusterAddonChartName returns the helm chart name for cluster addon.

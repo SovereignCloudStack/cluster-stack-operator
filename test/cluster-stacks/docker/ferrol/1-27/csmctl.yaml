@@ -1,0 +1,7 @@
+apiVersion: csmctl.clusterstack.x-k8s.io/v1alpha1
+config:
+  kubernetesVersion: v1.27.7
+  clusterStackName: ferrol
+  provider:
+    type: docker
+    apiVersion: docker.csmctl.clusterstack.x-k8s.io/v1alpha1

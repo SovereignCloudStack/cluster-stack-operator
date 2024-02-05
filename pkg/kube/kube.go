@@ -37,8 +37,8 @@ type kube struct {
 
 // Client has all the meathod for helm chart kube operation.
 type Client interface {
-	Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
-	Delete(template []byte) error
+	Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource, shouldDelete bool) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
+	Delete(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
 }
 
 // Factory creates new fake kube client factories.
@@ -64,7 +64,7 @@ func (*factory) NewClient(namespace string, resCfg *rest.Config) Client {
 	}
 }
 
-func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
+func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource, shouldDelete bool) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
 	logger := log.FromContext(ctx)
 
 	objs, err := parseK8sYaml(template)
@@ -113,49 +113,66 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 		newResources = append(newResources, resource)
 	}
 
-	// make a diff between new objs and oldResources to find out
-	// a) if an object is in oldResources and synced and not in new objs, then delete should be attempted
-	// then, all objs should be applied by create or update
-	// at the end, we should delete objects that are supposed to be deleted
-	for _, resource := range resourcesToBeDeleted(oldResources, objs) {
-		// call the function and get dynamic.ResourceInterface
-		// getDynamicResourceInterface
+	if shouldDelete {
+		// make a diff between new objs and oldResources to find out
+		// a) if an object is in oldResources and synced and not in new objs, then delete should be attempted
+		// then, all objs should be applied by create or update
+		// at the end, we should delete objects that are supposed to be deleted
+		for _, resource := range resourcesToBeDeleted(oldResources, objs) {
+			// call the function and get dynamic.ResourceInterface
+			// getDynamicResourceInterface
+			logger.Info("resource are being deleted", "kind", resource.Kind, "name", resource.Name, "namespace", resource.Namespace)
 
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
-		}
+			dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
+			}
 
-		if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-			reterr := fmt.Errorf("failed to delete object: %w", err)
-			logger.Error(reterr, "failed to delete object", "obj", resource.GroupVersionKind(), "namespacedName", resource.NamespacedName())
+			if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				reterr := fmt.Errorf("failed to delete object: %w", err)
+				logger.Error(reterr, "failed to delete object", "obj", resource.GroupVersionKind(), "namespacedName", resource.NamespacedName())
 
-			// append resource to status and requeue again to be able to retry deletion
-			resource.Status = csov1alpha1.ResourceStatusNotSynced
-			resource.Error = reterr.Error()
-			newResources = append(newResources, resource)
-			shouldRequeue = true
+				// append resource to status and requeue again to be able to retry deletion
+				resource.Status = csov1alpha1.ResourceStatusNotSynced
+				resource.Error = reterr.Error()
+				newResources = append(newResources, resource)
+				shouldRequeue = true
+			}
 		}
 	}
 
 	return newResources, shouldRequeue, nil
 }
 
-func (k *kube) Delete(template []byte) error {
+func (k *kube) Delete(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
 	clientset, err := kubernetes.NewForConfig(k.RestConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create clientset: %w", err)
+		return nil, false, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
 	objs, err := parseK8sYaml(template)
 	if err != nil {
-		return fmt.Errorf("couldn't parse k8s yaml: %w", err)
+		return nil, false, fmt.Errorf("couldn't parse k8s yaml: %w", err)
 	}
 
+	resourceMap := getResourceMap(oldResources)
 	for _, obj := range objs {
+		oldResource, found := resourceMap[types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}]
+
+		// do nothing if synced
+		if found && oldResource.Status == csov1alpha1.ResourceStatusSynced {
+			newResources = append(newResources, oldResource)
+			continue
+		}
+
+		if err := setLabel(obj, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
+			return nil, false, fmt.Errorf("error setting label: %w", err)
+		}
+
 		if err := deleteObject(clientset, k.Namespace, k.RestConfig, obj); err != nil {
-			return fmt.Errorf("failed to delete object %q: %w", obj.GetObjectKind().GroupVersionKind(), err)
+			return nil, true, fmt.Errorf("failed to delete object %q: %w", obj.GetObjectKind().GroupVersionKind(), err)
 		}
 	}
-	return nil
+
+	return newResources, shouldRequeue, nil
 }

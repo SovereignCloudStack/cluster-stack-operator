@@ -1,0 +1,101 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: {{ .Release.Name }}-{{ .Chart.Version }}
+  namespace: {{.Release.Namespace}}
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: KubeadmControlPlaneTemplate
+      name: {{ .Release.Name }}-{{ .Chart.Version }}-control-plane
+      namespace: {{ .Release.Namespace }}
+    machineInfrastructure:
+      ref:
+        kind: DockerMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        name: {{ .Release.Name }}-{{ .Chart.Version }}-machinetemplate-docker
+        namespace: {{ .Release.Namespace }}
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: DockerClusterTemplate
+      name: {{ .Release.Name }}-{{ .Chart.Version }}-cluster
+      namespace: {{ .Release.Namespace }}
+  workers:
+    machineDeployments:
+    - class: workeramd64
+      template:
+        bootstrap:
+          ref:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: KubeadmConfigTemplate
+            name: {{ .Release.Name }}-{{ .Chart.Version }}-worker-bootstraptemplate-docker
+            namespace: {{ .Release.Namespace }}
+        infrastructure:
+          ref:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: DockerMachineTemplate
+            name: {{ .Release.Name }}-{{ .Chart.Version }}-machinetemplate-docker
+            namespace: {{ .Release.Namespace }}
+  variables:
+  - name: imageRepository
+    required: true
+    schema:
+      openAPIV3Schema:
+        type: string
+        default: ""
+        example: "registry.k8s.io"
+        description: "imageRepository sets the container registry to pull images from. If empty, nothing will be set and the from of kubeadm will be used."
+  patches:
+  - name: imageRepository
+    description: "Sets the imageRepository used for the KubeadmControlPlane."
+    enabledIf: '{{ ne .imageRepository "" }}'
+    definitions:
+    - selector:
+        apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+        kind: KubeadmControlPlaneTemplate
+        matchResources:
+          controlPlane: true
+      jsonPatches:
+      - op: add
+        path: "/spec/template/spec/kubeadmConfigSpec/clusterConfiguration/imageRepository"
+        valueFrom:
+          variable: imageRepository
+  - name: customImage
+    description: "Sets the container image that is used for running dockerMachines for the controlplane and worker machineDeployments."
+    definitions:
+    - selector:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: DockerMachineTemplate
+        matchResources:
+          machineDeploymentClass:
+            names:
+            - workeramd64
+      jsonPatches:
+      - op: add
+        path: "/spec/template/spec/customImage"
+        value: {{ (index .Values.images.controlPlane 0).name }}
+    - selector:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: DockerMachineTemplate
+        matchResources:
+          controlPlane: true
+      jsonPatches:
+      - op: add
+        path: "/spec/template/spec/customImage"
+        value: {{ (index .Values.images.controlPlane 0).name }}
+  - name: DockerMachineTemplateWorker
+    description: "Sets the container image that is used for running dockerMachines for the worker machineDeployments."
+    definitions:
+      - selector:
+          apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+          kind: DockerMachineTemplate
+          matchResources:
+            machineDeploymentClass:
+              names:
+                - workeramd64
+        jsonPatches:
+          - op: add
+            path: "/spec/template/spec/customImage"
+            value: {{ (index .Values.images.worker 0).name }}

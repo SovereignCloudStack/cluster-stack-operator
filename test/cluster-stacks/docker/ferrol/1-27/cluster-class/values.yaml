@@ -1,0 +1,5 @@
+images:
+  controlPlane:
+    - name: ghcr.io/sovereigncloudstack/docker-ferrol-1-27-controlplaneamd64:v1
+  worker:
+    - name: ghcr.io/sovereigncloudstack/docker-ferrol-1-27-workeramd64:v1

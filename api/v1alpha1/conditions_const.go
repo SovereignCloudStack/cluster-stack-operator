@@ -27,6 +27,25 @@ const (
 )
 
 const (
+	// EvaluatedCELCondition reports on whether the CEL expression is evaluated properly.
+	EvaluatedCELCondition clusterv1.ConditionType = "EvaluatedCEL"
+
+	// FailedToEvaluatePreConditionReason is used when some pre CEL expression have been failed to evaluate.
+	FailedToEvaluatePreConditionReason = "FailedToEvaluatePreCondition"
+
+	// FailedToEvaluatePostConditionReason is used when some post CEL expression have been failed to evaluate.
+	FailedToEvaluatePostConditionReason = "FailedToEvaluatePostCondition"
+)
+
+const (
+	// HelmChartFoundCondition reports when mentioned helm chart is present in the cluster addon tar archive.
+	HelmChartFoundCondition = "HelmChartFound"
+
+	// HelmChartMissingReason is used when mentioned helm chart is missing in the cluster addon tar archive.
+	HelmChartMissingReason = "HelmChartMissing"
+)
+
+const (
 	// HelmChartAppliedCondition reports on whether the relevant helm chart has been applied.
 	HelmChartAppliedCondition clusterv1.ConditionType = "HelmChartApplied"
 
@@ -35,6 +54,14 @@ const (
 
 	// ObjectsApplyingOngoingReason is used when the objects are still being applied.
 	ObjectsApplyingOngoingReason = "ObjectsApplyingOngoing"
+)
+
+const (
+	// HelmChartDeletedCondition reports on whether the relevant helm chart has been applied.
+	HelmChartDeletedCondition clusterv1.ConditionType = "HelmChartDeleted"
+
+	// FailedToApplyObjectsReason is used when some objects have been failed to delete.
+	FailedToDeleteObjectsReason = "FailedToDeleteObjects"
 )
 
 const (
