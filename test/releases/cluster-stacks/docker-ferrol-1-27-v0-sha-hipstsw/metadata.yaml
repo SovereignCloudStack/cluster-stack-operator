@@ -1,0 +1,7 @@
+apiVersion: metadata.clusterstack.x-k8s.io/v1alpha1
+versions:
+  clusterStack: v0-sha.hipstsw
+  kubernetes: v1.27.7
+  components:
+    clusterAddon: v0-sha.hipstsw
+    nodeImage: v0-sha.hipstsw

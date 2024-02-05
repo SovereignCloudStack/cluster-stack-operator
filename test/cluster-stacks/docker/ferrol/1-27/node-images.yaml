@@ -1,0 +1,4 @@
+apiVersion: docker.infrastructure.clusterstack.x-k8s.io/v1alpha1
+dockerImages:
+  - controlplaneamd64
+  - workeramd64

@@ -211,8 +211,12 @@ func (r *ClusterStackReleaseReconciler) reconcileDelete(ctx context.Context, rel
 		return reconcile.Result{}, fmt.Errorf("failed to perform helm template: %w", err)
 	}
 
-	if err := kubeClient.Delete(template); err != nil {
+	_, shouldRequeue, err := kubeClient.Delete(ctx, template, clusterStackReleaseCR.Status.Resources)
+	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to delete helm chart: %w", err)
+	}
+	if shouldRequeue {
+		return reconcile.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
 	}
 
 	controllerutil.RemoveFinalizer(clusterStackReleaseCR, csov1alpha1.ClusterStackReleaseFinalizer)
@@ -284,7 +288,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 		return false, fmt.Errorf("template is empty")
 	}
 
-	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources)
+	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources, true)
 	if err != nil {
 		conditions.MarkFalse(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply")
 		return false, fmt.Errorf("failed to apply cluster class helm chart: %w", err)

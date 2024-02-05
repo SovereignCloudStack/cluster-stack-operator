@@ -1,0 +1,11 @@
+apiVersion: v2
+description: |
+  This chart installs and configures:
+  * Docker Ferrol Cluster Class
+maintainers:
+  - name: Syself
+    email: info@syself.com
+    url: https://github.com/syself
+name: docker-ferrol-1-27-cluster-class
+type: application
+version: << .ClusterAddonVersion >>

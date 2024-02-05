@@ -375,3 +375,127 @@ var _ = Describe("ClusterAddonReconciler", func() {
 		})
 	})
 })
+
+var _ = Describe("ClusterAddonReconcilerNewWay", func() {
+	var (
+		cluster             *clusterv1.Cluster
+		clusterStackRelease *csov1alpha1.ClusterStackRelease
+
+		testNs *corev1.Namespace
+		secret *corev1.Secret
+
+		key                    types.NamespacedName
+		clusterStackReleaseKey types.NamespacedName
+	)
+
+	BeforeEach(func() {
+		var err error
+		testNs, err = testEnv.CreateNamespace(ctx, "cso-system")
+		Expect(err).NotTo(HaveOccurred())
+
+		key = types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", helpers.DefaultKindClusterName), Namespace: testNs.Name}
+		clusterStackReleaseKey = types.NamespacedName{Name: testNewWayClusterStackName, Namespace: testNs.Name}
+
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%s", helpers.DefaultKindClusterName, capisecret.Kubeconfig),
+				Namespace: testNs.Name,
+			},
+			Data: map[string][]byte{
+				"value": []byte(testEnv.KubeConfig),
+			},
+			Type: "cluster.x-k8s.io/secret",
+		}
+		Expect(testEnv.Create(ctx, secret)).To(Succeed())
+
+		clusterStackRelease = &csov1alpha1.ClusterStackRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testNewWayClusterStackName,
+				Namespace: testNs.Name,
+			},
+		}
+		Expect(testEnv.Create(ctx, clusterStackRelease)).To(Succeed())
+
+		Eventually(func() bool {
+			var foundClusterStackRelease csov1alpha1.ClusterStackRelease
+			if err := testEnv.Get(ctx, clusterStackReleaseKey, &foundClusterStackRelease); err != nil {
+				testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "key", clusterStackReleaseKey)
+				return false
+			}
+			return true
+		}, timeout, interval).Should(BeTrue())
+
+		cluster = &clusterv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      helpers.DefaultKindClusterName,
+				Namespace: testNs.Name,
+			},
+			Spec: clusterv1.ClusterSpec{
+				Topology: &clusterv1.Topology{
+					Class:   testNewWayClusterClassName,
+					Version: "v1.27.7",
+				},
+			},
+		}
+		Expect(testEnv.Create(ctx, cluster)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		Expect(testEnv.Cleanup(ctx, cluster)).To(Succeed())
+		Eventually(func() error {
+			err := testEnv.Client.Delete(ctx, clusterStackRelease)
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}, timeout, interval).Should(BeNil())
+	})
+
+	Context("Basic test", func() {
+		It("sets HelmChartAppliedCondition condition on true if cluster addon helm chart has been applied and currentHook is set", func() {
+			ph, err := patch.NewHelper(cluster, testEnv)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+
+			Eventually(func() bool {
+				if err := ph.Patch(ctx, cluster); err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+
+			var foundClusterAddon csov1alpha1.ClusterAddon
+
+			Eventually(func() bool {
+				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
+					testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+
+			ph, err = patch.NewHelper(&foundClusterAddon, testEnv)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			foundClusterAddon.Spec.Hook = "AfterControlPlaneInitialized"
+
+			Eventually(func() bool {
+				if err := ph.Patch(ctx, &foundClusterAddon); err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+
+			Eventually(func() bool {
+				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
+					testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
+					return false
+				}
+
+				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, clusterv1.ReadyCondition) &&
+					foundClusterAddon.Status.CurrentHook == "AfterControlPlaneInitialized"
+			}, timeout, interval).Should(BeTrue())
+		})
+	})
+})
