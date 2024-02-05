@@ -14,6 +14,8 @@ rules:
       - clusters
     verbs:
       - get
+      - patch
+      - update
   - apiGroups:
       - clusterstack.x-k8s.io
     resources:

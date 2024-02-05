@@ -1,12 +1,14 @@
 module github.com/SovereignCloudStack/cluster-stack-operator/extension
 
-go 1.19
+go 1.21
+
+toolchain go1.21.6
 
 replace github.com/SovereignCloudStack/cluster-stack-operator => ../
 
 require (
+	github.com/SovereignCloudStack/cluster-stack-operator v0.1.0-alpha.2
 	github.com/spf13/pflag v1.0.5
-	github.com/sovereigncloudstack/cluster-stack-operator v0.0.0-00010101000000-000000000000
 	k8s.io/apimachinery v0.29.0
 	k8s.io/component-base v0.28.4
 	k8s.io/klog/v2 v2.110.1
@@ -15,7 +17,6 @@ require (
 )
 
 require (
-	github.com/SovereignCloudStack/cluster-stack-operator v0.1.0-alpha.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect

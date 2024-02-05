@@ -140,14 +140,14 @@ func main() {
 	}
 	restConfig.UserAgent = remote.DefaultClusterAPIUserAgent(controllerName)
 
-	client, err := client.New(restConfig, client.Options{})
+	client, err := client.New(restConfig, client.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "error creating client to the cluster")
 		os.Exit(1)
 	}
 
 	// Create the ExtensionHandlers for the lifecycle hooks
-	lifecycleExtensionHandlers := handlers.NewExtensionHandlers(client)
+	lifecycleExtensionHandlers := handlers.NewExtensionHandlers(client, scheme)
 
 	if err := webhookServer.AddExtensionHandler(server.ExtensionHandler{
 		Hook:        runtimehooksv1.BeforeClusterUpgrade,
