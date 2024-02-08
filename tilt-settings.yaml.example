@@ -1,0 +1,10 @@
+allowed_contexts:
+  - kind-cso
+# change `local_mode` to true if you want to use local cluster-stacks.
+local_mode: false
+deploy_cert_manager: true
+deploy_observability: false
+preload_images_for_kind: true
+kind_cluster_name: cso
+capi_version: v1.6.0
+cert_manager_version: v1.13.0

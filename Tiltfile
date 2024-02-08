@@ -17,18 +17,19 @@ settings = {
     "allowed_contexts": [
         "kind-cso",
     ],
+    "local_mode": False,
     "deploy_cert_manager": True,
     "preload_images_for_kind": True,
     "kind_cluster_name": "cso",
-    "capi_version": "v1.5.2",
+    "capi_version": "v1.6.0",
     "cert_manager_version": "v1.11.0",
     "kustomize_substitutions": {
     },
 }
 
 # global settings
-settings.update(read_json(
-    "tilt-settings.json",
+settings.update(read_yaml(
+    "tilt-settings.yaml",
     default = {},
 ))
 
@@ -111,19 +112,32 @@ def fixup_yaml_empty_arrays(yaml_str):
     return yaml_str.replace("storedVersions: null", "storedVersions: []")
 
 ## This should have the same versions as the Dockerfile
-tilt_dockerfile_header_cso = """
-FROM docker.io/alpine/helm:3.12.2 as helm
+if settings.get("local_mode"):
+    tilt_dockerfile_header_cso = """
+    FROM docker.io/alpine/helm:3.12.2 as helm
 
-FROM docker.io/library/alpine:3.18.0 as tilt
-WORKDIR /
-COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
-COPY manager .
-"""
+    FROM docker.io/library/alpine:3.18.0 as tilt
+    WORKDIR /
+    COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
+    COPY .tiltbuild/manager .
+    COPY .release/ /tmp/cluster-stacks/
+    """
+else:
+    tilt_dockerfile_header_cso = """
+    FROM docker.io/alpine/helm:3.12.2 as helm
+
+    FROM docker.io/library/alpine:3.18.0 as tilt
+    WORKDIR /
+    COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
+    COPY manager .
+    """
 
 # Build CSO and add feature gates
 def deploy_cso():
-    # yaml = str(kustomizesub("./hack/observability")) # build an observable kind deployment by default
-    yaml = str(kustomizesub("./config/default"))
+    if settings.get("local_mode"):
+        yaml = str(kustomizesub("./config/localmode"))
+    else:
+        yaml = str(kustomizesub("./config/default"))
     local_resource(
         name = "cso-components",
         cmd = ["sh", "-ec", sed_cmd, yaml, "|", envsubst_cmd],
@@ -152,18 +166,32 @@ def deploy_cso():
 
     # Set up an image build for the provider. The live update configuration syncs the output from the local_resource
     # build into the container.
-    docker_build_with_restart(
-        ref = "ghcr.io/sovereigncloudstack/cso-staging",
-        context = "./.tiltbuild/",
-        dockerfile_contents = tilt_dockerfile_header_cso,
-        target = "tilt",
-        entrypoint = entrypoint,
-        only = "manager",
-        live_update = [
-            sync(".tiltbuild/manager", "/manager"),
-        ],
-        ignore = ["templates"],
-    )
+    if settings.get("local_mode"):
+        docker_build_with_restart(
+            ref = "ghcr.io/sovereigncloudstack/cso-staging",
+            context = ".",
+            dockerfile_contents = tilt_dockerfile_header_cso,
+            target = "tilt",
+            entrypoint = entrypoint,
+            live_update = [
+                sync(".tiltbuild/manager", "/manager"),
+                sync(".release", "/tmp/cluster-stacks"),
+            ],
+            ignore = ["templates"],
+        )
+    else:
+        docker_build_with_restart(
+            ref = "ghcr.io/sovereigncloudstack/cso-staging",
+            context = "./.tiltbuild/",
+            dockerfile_contents = tilt_dockerfile_header_cso,
+            target = "tilt",
+            entrypoint = entrypoint,
+            live_update = [
+                sync(".tiltbuild/manager", "/manager"),
+            ],
+            ignore = ["templates"],
+        )
+
     k8s_yaml(blob(yaml))
     k8s_resource(workload = "cso-controller-manager", labels = ["CSO"])
     k8s_resource(

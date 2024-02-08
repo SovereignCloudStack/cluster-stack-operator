@@ -29,6 +29,7 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/controller"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/csoversion"
 	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client/fake"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/utillog"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/workloadcluster"
@@ -67,6 +68,7 @@ var (
 	clusterAddonConcurrency        int
 	logLevel                       string
 	releaseDir                     string
+	localMode                      bool
 	qps                            float64
 	burst                          int
 )
@@ -83,6 +85,7 @@ func main() {
 	flag.IntVar(&clusterAddonConcurrency, "clusteraddon-concurrency", 1, "Number of ClusterAddons to process simultaneously")
 	flag.StringVar(&logLevel, "log-level", "info", "Specifies log level. Options are 'debug', 'info' and 'error'")
 	flag.StringVar(&releaseDir, "release-dir", "/tmp/downloads/", "Specify release directory for cluster-stack releases")
+	flag.BoolVar(&localMode, "local", false, "Enable local mode where no release assets will be downloaded from a remote Git repository. Useful for implementing cluster stacks.")
 	flag.Float64Var(&qps, "qps", 50, "Enable custom query per second for kubernetes API server")
 	flag.IntVar(&burst, "burst", 100, "Enable custom burst defines how many queries the API server will accept before enforcing the limit established by qps")
 
@@ -116,7 +119,12 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	gitFactory := githubclient.NewFactory()
+	var gitFactory githubclient.Factory
+	if localMode {
+		gitFactory = fake.NewFactory()
+	} else {
+		gitFactory = githubclient.NewFactory()
+	}
 
 	restConfig := mgr.GetConfig()
 	restConfig.QPS = float32(qps)
