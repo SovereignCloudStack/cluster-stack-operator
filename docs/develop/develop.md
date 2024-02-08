@@ -25,6 +25,22 @@ You should make sure that everything in the UI looks green. If not, e.g. if the 
 
 If everything is green, then you can already check for your clusterstack that has been deployed. You can use a tool like k9s to have a look at the management cluster and its custom resources. 
 
+Example:
+
+```shell
+❯ kubectl get clusterstacks -A
+NAMESPACE   NAME           PROVIDER   CLUSTERSTACK   K8S    CHANNEL   AUTOSUBSCRIBE   USABLE   LATEST                            AGE     REASON   MESSAGE
+cluster     clusterstack   docker     ferrol         1.27   stable    false           v2       docker-ferrol-1-27-v2 | v1.27.3   4m52s
+```
+
+```shell
+❯ kubectl get clusterstackreleases.clusterstack.x-k8s.io -A
+NAMESPACE   NAME                    K8S VERSION   READY   AGE     REASON   MESSAGE
+cluster     docker-ferrol-1-27-v2   v1.27.3       true    7m51s
+```
+
+The above cluster stack was downloaded from [SovereignCloudStack/cluster-stacks](https://github.com/SovereignCloudStack/cluster-stacks/releases)
+
 In case your clusterstack shows that it is ready, you can deploy a workload cluster. This could be done through the Tilt UI, by pressing the button in the top right corner "Create Workload Cluster". This triggers the `make create-workload-cluster-docker`, which uses the environment variables and the cluster-template.
 
 In case you want to change some code, you can do so and see that Tilt triggers on save. It will update the container of the operator automatically.
