@@ -49,6 +49,18 @@ type ClusterAddonStatus struct {
 	// +optional
 	Resources []*Resource `json:"resources,omitempty"`
 
+	// CurrentHook specifies the current running Hook.
+	// +optional
+	CurrentHook string `json:"currentHook,omitempty"`
+
+	// KubernetesVersion is the kubernetes version of the current cluster stack release.
+	// +optional
+	KubernetesVersion string `json:"kubernetesVersion,omitempty"`
+
+	// HelmChartStatus defines the status of helm chart in the cluster addon.
+	// +optional
+	HelmChartStatus map[string]HelmChartStatusConditions `json:"helmChartStatus,omitempty"`
+
 	// +optional
 	// +kubebuilder:default:=false
 	Ready bool `json:"ready"`

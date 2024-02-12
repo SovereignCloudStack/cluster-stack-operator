@@ -69,6 +69,7 @@ type ClusterAddonReconciler struct {
 	KubeClientFactory      kube.Factory
 	WatchFilterValue       string
 	WorkloadClusterFactory workloadcluster.Factory
+	addonConditionTimeout  time.Time
 }
 
 //+kubebuilder:rbac:groups=clusterstack.x-k8s.io,resources=clusteraddons,verbs=get;list;watch;create;update;patch;delete
@@ -227,6 +228,65 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 		clusterAddon.Status.Ready = true
 		return ctrl.Result{}, nil
+
+	} else {
+		if clusterAddon.Spec.Hook != clusterAddon.Status.CurrentHook {
+			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+			clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
+			clusterAddon.Status.Ready = false
+		}
+
+		if clusterAddon.Status.Ready {
+			return reconcile.Result{}, nil
+		}
+
+		// return if timeout occurs.
+		if conditions.GetReason(clusterAddon, csov1alpha1.EvaluatedCELCondition) == csov1alpha1.CELEvaluationTimeoutReason {
+			return reconcile.Result{}, nil
+		}
+
+		// metadata := releaseAsset.Meta
+
+		// only apply the Helm chart again if the Helm chart version has also changed from one cluster stack release to the other
+		// if clusterAddon.Spec.Version == metadata.Versions.Components.ClusterAddon {
+		// 	clusterAddon.Status.Ready = true
+		// 	return reconcile.Result{}, nil
+		// }
+
+		in.addonStagesInput, err = getAddonStagesInput(r, in.restConfig, in.clusterAddonChartPath)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+		}
+
+		// clusteraddon.yaml in the release.
+		clusterAddonConfig, err := clusteraddon.ParseClusterAddonConfig(in.clusterAddonConfigPath)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to parse clusteraddon.yaml config: %w", err)
+		}
+
+		for _, stage := range clusterAddonConfig.AddonStages[in.clusterAddon.Spec.Hook] {
+			shouldRequeue, err := r.executeStage(ctx, stage, in)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
+			}
+			if shouldRequeue {
+				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+			}
+		}
+
+		// return if timeout occurs.
+		if conditions.GetReason(clusterAddon, csov1alpha1.EvaluatedCELCondition) == csov1alpha1.CELEvaluationTimeoutReason {
+			return reconcile.Result{}, nil
+		}
+
+		// Helm chart has been applied successfully
+		// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
+		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+
+		// store the release kubernetes version and current hook
+		clusterAddon.Status.KubernetesVersion = releaseAsset.Meta.Versions.Kubernetes
+		clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
+		clusterAddon.Status.Ready = true
 	}
 
 	// if condition is false we have not yet successfully applied the helm chart
@@ -289,6 +349,265 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 
 	in.clusterAddon.Status.Resources = newResources
 	return shouldRequeue, nil
+}
+
+func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage clusteraddon.Stage, in templateAndApplyClusterAddonInput) (bool, error) {
+
+	var (
+		newResources  []*csov1alpha1.Resource
+		shouldRequeue bool
+		buildTemplate []byte
+		err           error
+	)
+
+	_, exists := in.chartMap[stage.HelmChartName]
+	if !exists {
+		// do not reconcile by returning error, just create an event.
+		conditions.MarkFalse(
+			in.clusterAddon,
+			csov1alpha1.HelmChartFoundCondition,
+			csov1alpha1.HelmChartMissingReason,
+			clusterv1.ConditionSeverityInfo,
+			"helm chart name doesn't exists in the cluster addon helm chart: %q",
+			stage.HelmChartName,
+		)
+		return false, nil
+	}
+
+check:
+	switch in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] {
+	case csov1alpha1.None:
+		// If no WaitForPreCondition is mentioned.
+		if !reflect.DeepEqual(stage.WaitForPreCondition, clusteraddon.WaitForCondition{}) {
+			// check if timeout is already set or not.
+			if r.addonConditionTimeout.IsZero() {
+				r.addonConditionTimeout = time.Now()
+			}
+
+			// Evaluate the condition.
+			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPreCondition); err != nil {
+				if errors.Is(err, clusteraddon.ConditionNotMatchError) {
+					// check if timeout has elapsed.
+					if time.Since(r.addonConditionTimeout) > stage.WaitForPreCondition.Timeout {
+						conditions.MarkFalse(
+							in.clusterAddon,
+							csov1alpha1.EvaluatedCELCondition,
+							csov1alpha1.CELEvaluationTimeoutReason,
+							clusterv1.ConditionSeverityError,
+							"timeout occurred evaluating pre condition for stage: %q: %s", stage.HelmChartName, err.Error(),
+						)
+
+						return false, nil
+					}
+					conditions.MarkFalse(
+						in.clusterAddon,
+						csov1alpha1.EvaluatedCELCondition,
+						csov1alpha1.FailedToEvaluatePreConditionReason,
+						clusterv1.ConditionSeverityInfo,
+						"failed to successfully evaluate pre condition: %q: %s", stage.HelmChartName, err.Error(),
+					)
+
+					in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPreCondition
+
+					return true, nil
+				}
+				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for pre condition: %w", err)
+			}
+
+			// reset the timeout
+			r.addonConditionTimeout = time.Time{}
+		}
+		in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.ApplyingOrDeleting
+		goto check
+
+	case csov1alpha1.ApplyingOrDeleting:
+		if stage.Action == clusteraddon.Apply {
+			newResources, shouldRequeue, err = helmTemplateAndApply(ctx, in.kubeClient, in, stage.HelmChartName, buildTemplate, false)
+			if err != nil {
+				return false, fmt.Errorf("failed to helm template and apply: %w", err)
+			}
+			if shouldRequeue {
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.HelmChartAppliedCondition,
+					csov1alpha1.FailedToApplyObjectsReason,
+					clusterv1.ConditionSeverityInfo,
+					"failed to successfully apply helm chart: %q", stage.HelmChartName,
+				)
+
+				return true, nil
+			}
+			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
+			goto check
+
+		} else {
+			// Delete part
+			newResources, shouldRequeue, err = helmTemplateAndDelete(ctx, in, stage.HelmChartName, buildTemplate)
+			if err != nil {
+				return false, fmt.Errorf("failed to delete helm chart: %w", err)
+			}
+			if shouldRequeue {
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.HelmChartDeletedCondition,
+					csov1alpha1.FailedToDeleteObjectsReason,
+					clusterv1.ConditionSeverityInfo,
+					"failed to successfully delete helm chart: %q", stage.HelmChartName,
+				)
+
+				return true, nil
+			}
+			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
+			goto check
+		}
+
+	case csov1alpha1.WaitingForPostCondition:
+		// If no WaitForPostCondition is mentioned.
+		if !reflect.DeepEqual(stage.WaitForPostCondition, clusteraddon.WaitForCondition{}) {
+			// check if timeout is already set or not.
+			if r.addonConditionTimeout.IsZero() {
+				r.addonConditionTimeout = time.Now()
+			}
+
+			// Evaluate the condition.
+			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPostCondition); err != nil {
+				if errors.Is(err, clusteraddon.ConditionNotMatchError) {
+					// check if timeout has elapsed.
+					if time.Since(r.addonConditionTimeout) > stage.WaitForPostCondition.Timeout {
+						conditions.MarkFalse(
+							in.clusterAddon,
+							csov1alpha1.EvaluatedCELCondition,
+							csov1alpha1.CELEvaluationTimeoutReason,
+							clusterv1.ConditionSeverityError,
+							"timeout occurred evaluating post condition for stage: %q: %s", stage.HelmChartName, err.Error(),
+						)
+
+						return false, nil
+					}
+
+					conditions.MarkFalse(
+						in.clusterAddon,
+						csov1alpha1.EvaluatedCELCondition,
+						csov1alpha1.FailedToEvaluatePostConditionReason,
+						clusterv1.ConditionSeverityInfo,
+						"failed to successfully evaluate post condition: %q: %s", stage.HelmChartName, err.Error(),
+					)
+
+					return true, nil
+				}
+				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for pre condition: %w", err)
+			}
+
+			// reset the timeout
+			r.addonConditionTimeout = time.Time{}
+		}
+		in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.Done
+	}
+
+	in.clusterAddon.Status.Resources = append(in.clusterAddon.Status.Resources, newResources...)
+
+	return false, nil
+}
+
+func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte, shouldDelete bool) ([]*csov1alpha1.Resource, bool, error) {
+	subDirPath := filepath.Join(in.destinationClusterAddonChartDir, helmChartName)
+
+	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate, true)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
+	}
+
+	newResources, shouldRequeue, err := kubeClient.Apply(ctx, helmTemplate, in.clusterAddon.Status.Resources, shouldDelete)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
+	}
+
+	return newResources, shouldRequeue, nil
+}
+
+func helmTemplateAndDelete(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte) ([]*csov1alpha1.Resource, bool, error) {
+	subDirPath := filepath.Join(in.destinationClusterAddonChartDir, helmChartName)
+
+	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate, true)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
+	}
+
+	newResources, shouldRequeue, err := in.kubeClient.Delete(ctx, helmTemplate, in.clusterAddon.Status.Resources)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
+	}
+
+	return newResources, shouldRequeue, nil
+}
+
+func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynamic.DynamicClient, discoveryClient *discovery.DiscoveryClient, waitCondition clusteraddon.WaitForCondition) error {
+	var evalMap = make(map[string]interface{})
+
+	env, err := cel.NewEnv()
+	if err != nil {
+		return fmt.Errorf("environment creation error: %w", err)
+	}
+
+	for _, object := range waitCondition.Objects {
+		env, err = env.Extend(
+			cel.Variable(object.Key, celtypes.NewMapType(cel.StringType, cel.AnyType)),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to extend the current cel environment with %q: %w", object.Key, err)
+		}
+	}
+
+	ast, iss := env.Compile(waitCondition.Conditions)
+	if !errors.Is(iss.Err(), nil) {
+		return fmt.Errorf("failed to compile cel expression: %q: %w", waitCondition.Conditions, err)
+	}
+
+	prg, err := env.Program(ast)
+	if err != nil {
+		return fmt.Errorf("failed to generate an evaluable instance of the Ast within the environment: %w", err)
+	}
+
+	for _, object := range waitCondition.Objects {
+		splittedAPIVersion := strings.Split(object.APIVersion, "/")
+
+		gvr := schema.GroupVersionKind{
+			Kind: object.Kind,
+		}
+		if len(splittedAPIVersion) == 2 {
+			gvr.Group = splittedAPIVersion[0]
+			gvr.Version = splittedAPIVersion[1]
+		} else {
+			gvr.Group = ""
+			gvr.Version = splittedAPIVersion[0]
+		}
+
+		mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient))
+		mapping, err := mapper.RESTMapping(schema.GroupKind{Group: gvr.Group, Kind: gvr.Kind}, gvr.Version)
+		if err != nil {
+			return fmt.Errorf("error creating rest mapping: %w", err)
+		}
+
+		resource := dynamicClient.Resource(mapping.Resource)
+
+		unstructuredObj, err := resource.Namespace(object.Namespace).Get(ctx, object.Name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get object(name: %s, namespace: %s) from dynamic client: %w", object.Name, object.Namespace, err)
+		}
+
+		evalMap[object.Key] = unstructuredObj.Object
+	}
+
+	out, _, err := prg.Eval(evalMap)
+	if err != nil {
+		return fmt.Errorf("failed to evaluate the Ast and environment against the input vars: %w", err)
+	}
+
+	if out.Value() != true {
+		return fmt.Errorf("failed to evaluate the cel expression, please check again: %w", clusteraddon.ConditionNotMatchError)
+	}
+
+	return nil
 }
 
 func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client) ([]byte, error) {

@@ -152,6 +152,21 @@ spec:
                   - type
                   type: object
                 type: array
+              currentHook:
+                description: CurrentHook specifies the current running Hook.
+                type: string
+              helmChartStatus:
+                additionalProperties:
+                  description: HelmChartStatusConditions defines the status of helm
+                    chart in the cluster addon.
+                  type: string
+                description: HelmChartStatus defines the status of helm chart in the
+                  cluster addon.
+                type: object
+              kubernetesVersion:
+                description: KubernetesVersion is the kubernetes version of the current
+                  cluster stack release.
+                type: string
               ready:
                 default: false
                 type: boolean

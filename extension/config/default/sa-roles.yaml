@@ -18,6 +18,7 @@ rules:
       - clusterstack.x-k8s.io
     resources:
       - clusteraddons
+      - clusteraddons/status
     verbs:
       - get
       - patch

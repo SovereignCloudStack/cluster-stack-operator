@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/exp/runtime/hooks/api/v1alpha1"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -47,28 +48,43 @@ func (e *ExtensionHandler) DoBeforeClusterUpgrade(ctx context.Context, request *
 	key := types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", request.Cluster.GetName()), Namespace: request.Cluster.GetNamespace()}
 	clusterAddon := &csov1alpha1.ClusterAddon{}
 	if err := e.client.Get(ctx, key, clusterAddon); err != nil {
+		log.Error(err, "failed to get cluster addon")
 		response.SetStatus(runtimehooksv1.ResponseStatusFailure)
 		response.SetMessage(err.Error())
 		return
 	}
 
-	patchHelper, err := patch.NewHelper(clusterAddon, e.client)
-	if err != nil {
-		response.SetStatus(runtimehooksv1.ResponseStatusFailure)
-		response.SetMessage(fmt.Errorf("failed to init patch helper: %w", err).Error())
+	if clusterAddon.Spec.Hook != "BeforeClusterUpgrade" {
+		patchHelper, err := patch.NewHelper(clusterAddon, e.client)
+		if err != nil {
+			log.Error(err, "failed to create patch helper")
+			response.SetStatus(runtimehooksv1.ResponseStatusFailure)
+			response.SetMessage(err.Error())
+		}
+
+		clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
+		conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+
+		if err := patchHelper.Patch(ctx, clusterAddon); err != nil {
+			log.Error(err, "failed to patch cluster addon")
+			response.SetStatus(runtimehooksv1.ResponseStatusFailure)
+			response.SetMessage(err.Error())
+		}
+
+		response.SetRetryAfterSeconds(10)
+		return
 	}
 
-	defer func() {
-		if err := patchHelper.Patch(ctx, clusterAddon); err != nil {
-			response.SetStatus(runtimehooksv1.ResponseStatusFailure)
-			response.SetMessage(fmt.Errorf("failed to patch clusterAddon: %w", err).Error())
-		}
-	}()
-
-	if conditions.IsFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition) {
-		// wait N seconds
-		response.SetRetryAfterSeconds(10)
+	if e.isTimeoutConditionPresent(ctx, key, clusterAddon) {
+		message := fmt.Sprintf("timeout occurred while evaluating CEL expression: %s", conditions.GetMessage(clusterAddon, csov1alpha1.EvaluatedCELCondition))
+		log.Info(message)
 		response.SetStatus(runtimehooksv1.ResponseStatusFailure)
+		response.SetMessage(message)
+		return
+	}
+
+	if !utils.IsPresentAndTrue(ctx, e.client, key, clusterAddon, csov1alpha1.HelmChartAppliedCondition) {
+		response.SetRetryAfterSeconds(5)
 		return
 	}
 
@@ -97,19 +113,36 @@ func (e *ExtensionHandler) DoAfterControlPlaneInitialized(ctx context.Context, r
 		return
 	}
 
-	patchHelper, err := patch.NewHelper(clusterAddon, e.client)
-	if err != nil {
-		response.SetStatus(runtimehooksv1.ResponseStatusFailure)
-		response.SetMessage(fmt.Errorf("failed to init patch helper: %w", err).Error())
-	}
+	if clusterAddon.Spec.Hook != "AfterControlPlaneInitialized" {
+		patchHelper, err := patch.NewHelper(clusterAddon, e.client)
+		if err != nil {
+			log.Error(err, "failed to create patch helper")
+			response.SetStatus(runtimehooksv1.ResponseStatusFailure)
+			response.SetMessage(fmt.Errorf("failed to init patch helper: %w", err).Error())
+		}
 
-	defer func() {
-		if err := patchHelper.Patch(ctx, clusterAddon); err != nil {
+		clusterAddon.Spec.Hook = "AfterControlPlaneInitialized"
+		conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+
+		if err := patchHelper.Patch(ctx, clusterAddon, patch.WithForceOverwriteConditions{}); err != nil {
+			log.Error(err, "failed to patch cluster addon")
 			response.SetStatus(runtimehooksv1.ResponseStatusFailure)
 			response.SetMessage(fmt.Errorf("failed to patch clusterAddon: %w", err).Error())
 		}
-	}()
+	}
+
+	if e.isTimeoutConditionPresent(ctx, key, clusterAddon) {
+		message := fmt.Sprintf("timeout occurred while evaluating CEL expression: %s", conditions.GetMessage(clusterAddon, csov1alpha1.EvaluatedCELCondition))
+		log.Info(message)
+		response.SetStatus(runtimehooksv1.ResponseStatusFailure)
+		response.SetMessage(message)
+		return
+	}
 
 	response.SetStatus(runtimehooksv1.ResponseStatusSuccess)
 	return
+}
+
+func (e *ExtensionHandler) isTimeoutConditionPresent(ctx context.Context, key types.NamespacedName, getter conditions.Getter) bool {
+	return utils.IsPresentAndFalseWithReason(ctx, e.client, key, getter, csov1alpha1.EvaluatedCELCondition, csov1alpha1.CELEvaluationTimeoutReason)
 }

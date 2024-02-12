@@ -27,6 +27,28 @@ const (
 )
 
 const (
+	// EvaluatedCELCondition reports on whether the CEL expression is evaluated properly.
+	EvaluatedCELCondition clusterv1.ConditionType = "EvaluatedCEL"
+
+	// FailedToEvaluatePreConditionReason is used when some pre CEL expression have been failed to evaluate.
+	FailedToEvaluatePreConditionReason = "FailedToEvaluatePreCondition"
+
+	// FailedToEvaluatePostConditionReason is used when some post CEL expression have been failed to evaluate.
+	FailedToEvaluatePostConditionReason = "FailedToEvaluatePostCondition"
+
+	// CELEvaluationTimeoutReason is used when CEL expression have been failed to evaluate and timeout(1 min) has occurred.
+	CELEvaluationTimeoutReason = "CELEvaluationTimeout"
+)
+
+const (
+	// HelmChartFoundCondition reports when mentioned helm chart is present in the cluster addon tar archive.
+	HelmChartFoundCondition = "HelmChartFound"
+
+	// HelmChartMissingReason is used when mentioned helm chart is missing in the cluster addon tar archive.
+	HelmChartMissingReason = "HelmChartMissing"
+)
+
+const (
 	// HelmChartAppliedCondition reports on whether the relevant helm chart has been applied.
 	HelmChartAppliedCondition clusterv1.ConditionType = "HelmChartApplied"
 
