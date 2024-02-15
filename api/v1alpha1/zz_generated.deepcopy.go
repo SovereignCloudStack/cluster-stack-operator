@@ -120,6 +120,13 @@ func (in *ClusterAddonStatus) DeepCopyInto(out *ClusterAddonStatus) {
 			}
 		}
 	}
+	if in.HelmChartStatus != nil {
+		in, out := &in.HelmChartStatus, &out.HelmChartStatus
+		*out = make(map[string]HelmChartStatusConditions, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make(v1beta1.Conditions, len(*in))
