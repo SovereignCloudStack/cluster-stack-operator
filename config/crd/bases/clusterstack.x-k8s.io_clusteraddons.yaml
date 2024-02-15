@@ -156,10 +156,7 @@ spec:
                 description: CurrentHook specifies the current running Hook.
                 type: string
               helmChartStatus:
-                additionalProperties:
-                  description: HelmChartStatusConditions defines the status of helm
-                    chart in the cluster addon.
-                  type: string
+                additionalProperties: {}
                 description: HelmChartStatus defines the status of helm chart in the
                   cluster addon.
                 type: object
