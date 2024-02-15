@@ -96,20 +96,6 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 
 	controllerutil.AddFinalizer(clusterStackRelease, csov1alpha1.ClusterStackReleaseFinalizer)
 
-	gc, err := r.GitHubClientFactory.NewClient(ctx)
-	if err != nil {
-		conditions.MarkFalse(clusterStackRelease,
-			csov1alpha1.GitAPIAvailableCondition,
-			csov1alpha1.GitTokenOrEnvVariableNotSetReason,
-			clusterv1.ConditionSeverityError,
-			err.Error(),
-		)
-		record.Warnf(clusterStackRelease, "GitTokenOrEnvVariableNotSet", err.Error())
-		return reconcile.Result{}, fmt.Errorf("failed to create Github client: %w", err)
-	}
-
-	conditions.MarkTrue(clusterStackRelease, csov1alpha1.GitAPIAvailableCondition)
-
 	// name of ClusterStackRelease object is same as the release tag
 	releaseTag := clusterStackRelease.Name
 
@@ -126,6 +112,20 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		// this is the point where we download the release from github
 		// acquire lock so that only one reconcile loop can download the release
 		r.clusterStackRelDownloadDirectoryMutex.Lock()
+
+		gc, err := r.GitHubClientFactory.NewClient(ctx)
+		if err != nil {
+			conditions.MarkFalse(clusterStackRelease,
+				csov1alpha1.GitAPIAvailableCondition,
+				csov1alpha1.GitTokenOrEnvVariableNotSetReason,
+				clusterv1.ConditionSeverityError,
+				err.Error(),
+			)
+			record.Warnf(clusterStackRelease, "GitTokenOrEnvVariableNotSet", err.Error())
+			return reconcile.Result{}, fmt.Errorf("failed to create Github client: %w", err)
+		}
+
+		conditions.MarkTrue(clusterStackRelease, csov1alpha1.GitAPIAvailableCondition)
 
 		if err := downloadReleaseAssets(ctx, releaseTag, releaseAssets.LocalDownloadPath, gc); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to download release assets: %w", err)

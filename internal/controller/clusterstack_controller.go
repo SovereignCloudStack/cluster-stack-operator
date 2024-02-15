@@ -109,33 +109,36 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		return reconcile.Result{}, fmt.Errorf("failed to get latest ready ClusterStackRelease: %w", err)
 	}
 
-	gc, err := r.GitHubClientFactory.NewClient(ctx)
-	if err != nil {
-		conditions.MarkFalse(clusterStack,
-			csov1alpha1.GitAPIAvailableCondition,
-			csov1alpha1.GitTokenOrEnvVariableNotSetReason,
-			clusterv1.ConditionSeverityError,
-			err.Error(),
-		)
-		record.Warnf(clusterStack, "GitTokenOrEnvVariableNotSet", err.Error())
-		return reconcile.Result{}, fmt.Errorf("failed to create Github client: %w", err)
+	var latest *string
+
+	if clusterStack.Spec.AutoSubscribe {
+		gc, err := r.GitHubClientFactory.NewClient(ctx)
+		if err != nil {
+			conditions.MarkFalse(clusterStack,
+				csov1alpha1.GitAPIAvailableCondition,
+				csov1alpha1.GitTokenOrEnvVariableNotSetReason,
+				clusterv1.ConditionSeverityError,
+				err.Error(),
+			)
+			record.Warnf(clusterStack, "GitTokenOrEnvVariableNotSet", err.Error())
+			return reconcile.Result{}, fmt.Errorf("failed to create Github client: %w", err)
+		}
+
+		conditions.MarkTrue(clusterStack, csov1alpha1.GitAPIAvailableCondition)
+		latest, err = getLatestReleaseFromRemoteRepository(ctx, clusterStack, gc)
+		if err != nil {
+			// only log error and mark condition as false, but continue
+			conditions.MarkFalse(clusterStack,
+				csov1alpha1.GitReleasesSyncedCondition,
+				csov1alpha1.FailedToSyncReason,
+				clusterv1.ConditionSeverityWarning,
+				err.Error(),
+			)
+			logger.Error(err, "failed to get latest release from remote repository")
+		}
+
+		conditions.MarkTrue(clusterStack, csov1alpha1.GitReleasesSyncedCondition)
 	}
-
-	conditions.MarkTrue(clusterStack, csov1alpha1.GitAPIAvailableCondition)
-
-	latest, err := getLatestReleaseFromRemoteRepository(ctx, clusterStack, gc)
-	if err != nil {
-		// only log error and mark condition as false, but continue
-		conditions.MarkFalse(clusterStack,
-			csov1alpha1.GitReleasesSyncedCondition,
-			csov1alpha1.FailedToSyncReason,
-			clusterv1.ConditionSeverityWarning,
-			err.Error(),
-		)
-		logger.Error(err, "failed to get latest release from remote repository")
-	}
-
-	conditions.MarkTrue(clusterStack, csov1alpha1.GitReleasesSyncedCondition)
 
 	inUse, err := r.getClusterStackReleasesInUse(ctx, req.Namespace)
 	if err != nil {
@@ -534,11 +537,6 @@ func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.Clust
 }
 
 func getLatestReleaseFromRemoteRepository(ctx context.Context, clusterStack *csov1alpha1.ClusterStack, gc githubclient.Client) (*string, error) {
-	// nothing to do if autoSubscribe is not activated
-	if !clusterStack.Spec.AutoSubscribe {
-		return nil, nil
-	}
-
 	ghReleases, resp, err := gc.ListRelease(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list releases on remote Git repository: %w", err)
