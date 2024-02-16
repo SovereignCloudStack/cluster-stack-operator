@@ -113,6 +113,8 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		// acquire lock so that only one reconcile loop can download the release
 		r.clusterStackRelDownloadDirectoryMutex.Lock()
 
+		defer r.clusterStackRelDownloadDirectoryMutex.Unlock()
+
 		gc, err := r.GitHubClientFactory.NewClient(ctx)
 		if err != nil {
 			conditions.MarkFalse(clusterStackRelease,
@@ -130,8 +132,6 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		if err := downloadReleaseAssets(ctx, releaseTag, releaseAssets.LocalDownloadPath, gc); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to download release assets: %w", err)
 		}
-
-		r.clusterStackRelDownloadDirectoryMutex.Unlock()
 
 		// requeue to make sure release assets can be accessed
 		return reconcile.Result{Requeue: true}, nil
