@@ -278,6 +278,24 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			clusterAddon.Status.Ready = false
 		}
 
+		// In case the Kubernetes version stays the same, the hook server does not trigger.
+		// Therefore, we have to check whether the ClusterStack is upgraded and if that is the case, the ClusterAddons have to be upgraded as well.
+		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && clusterAddon.Status.KubernetesVersion == releaseAsset.Meta.Versions.Kubernetes {
+			if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
+				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+				clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
+				clusterAddon.Status.Ready = false
+				conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+			} else {
+				// If the cluster addon version don't change we don't want to apply helm charts again.
+				clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+				clusterAddon.Status.Ready = true
+			}
+		}
+
+		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+		clusterAddon.Spec.Version = releaseAsset.Meta.Versions.Components.ClusterAddon
+
 		if clusterAddon.Status.Ready {
 			return reconcile.Result{}, nil
 		}
@@ -293,8 +311,38 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			return reconcile.Result{}, fmt.Errorf("failed to parse clusteraddon.yaml config: %w", err)
 		}
 
-		for _, stage := range clusterAddonConfig.AddonStages[in.clusterAddon.Spec.Hook] {
-			shouldRequeue, err := executeStage(ctx, stage, in)
+		// In case the Kubernetes version stayed the same during an upgrade, the hook server does not trigger and
+		// we just take the Helm charts that are supposed to be installed in the BeforeClusterUpgrade hook and apply them.
+		if clusterAddon.Status.KubernetesVersion == releaseAsset.Meta.Versions.Kubernetes {
+			clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
+			for _, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
+				shouldRequeue, err := r.executeStage(ctx, stage, in)
+				if err != nil {
+					return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
+				}
+				if shouldRequeue {
+					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+				}
+			}
+
+			// Helm chart has been applied successfully
+			// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
+			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+
+			// store the release kubernetes version and current hook
+			clusterAddon.Status.Ready = true
+
+			return ctrl.Result{}, nil
+		}
+
+		// If hook is empty we can don't want to proceed executing staged according to current hook
+		// hence we can return.
+		if clusterAddon.Spec.Hook == "" {
+			return reconcile.Result{}, nil
+		}
+
+		for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
+			shouldRequeue, err := r.executeStage(ctx, stage, in)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
 			}
@@ -414,7 +462,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	return shouldRequeue, nil
 }
 
-func executeStage(ctx context.Context, stage clusteraddon.Stage, in templateAndApplyClusterAddonInput) (bool, error) {
+func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage clusteraddon.Stage, in templateAndApplyClusterAddonInput) (bool, error) {
 	var (
 		newResources  []*csov1alpha1.Resource
 		shouldRequeue bool

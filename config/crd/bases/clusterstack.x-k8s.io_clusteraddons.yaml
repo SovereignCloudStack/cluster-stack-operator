@@ -179,6 +179,10 @@ spec:
                 description: HelmChartStatus defines the status of helm chart in the
                   cluster addon.
                 type: object
+              kubernetesVersion:
+                description: KubernetesVersion is the kubernetes version of the current
+                  cluster stack release.
+                type: string
               ready:
                 default: false
                 type: boolean
