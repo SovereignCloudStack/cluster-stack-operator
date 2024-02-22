@@ -68,6 +68,10 @@ type ClusterAddonStatus struct {
 	// +optional
 	CurrentHook string `json:"currentHook,omitempty"`
 
+	// KubernetesVersion is the kubernetes version of the current cluster stack release.
+	// +optional
+	KubernetesVersion string `json:"kubernetesVersion,omitempty"`
+
 	// HelmChartStatus defines the status of helm chart in the cluster addon.
 	// +optional
 	HelmChartStatus map[string]HelmChartStatusConditions `json:"helmChartStatus,omitempty"`
