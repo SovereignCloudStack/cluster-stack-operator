@@ -126,6 +126,12 @@ jobs:
   release:
     name: Create draft release
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      contents: write
+    defaults:
+      run:
+        shell: bash
     needs:
       - manager-image
     steps:
