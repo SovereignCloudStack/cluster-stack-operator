@@ -1,0 +1,47 @@
+{
+  extends: [
+    ":dependencyDashboard",
+    ":semanticPrefixFixDepsChoreOthers",
+    ":autodetectRangeStrategy",
+    ":disableRateLimiting",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests",
+    "github>whitesource/merge-confidence:beta",
+    "github>SovereignCloudStack/cluster-stack-operator//.github/renovate/commitMessage.json5",
+    "github>SovereignCloudStack/cluster-stack-operator//.github/renovate/approval.json5",
+    "github>SovereignCloudStack/cluster-stack-operator//.github/renovate/golang.json5",
+    "github>SovereignCloudStack/cluster-stack-operator//.github/renovate/groups.json5",
+    "github>SovereignCloudStack/cluster-stack-operator//.github/renovate/labels.json5",
+    "github>SovereignCloudStack/cluster-stack-operator//.github/renovate/regexManagers.json5"
+  ],
+  platform: "github",
+  baseBranches: ["main"],
+  onboarding: false,
+  requireConfig: "ignored",
+  timezone: "Europe/Berlin",
+  // repo config
+  repositories: ["SovereignCloudStack/cluster-stack-operator"],
+  ignorePaths: [
+    "**/vendor/**",
+    "**/test/**",
+    "**/tests/**"
+  ],
+  username: "cluster-stack-bot[bot]",
+  gitAuthor: "cluster-stack-bot[bot] <143188378+cluster-stack-bot[bot]@users.noreply.github.com>",
+  // PR config
+  dependencyDashboardTitle: "Dependency Dashboard 🤖",
+  dependencyDashboardHeader: "",
+  prFooter: "",
+  suppressNotifications: ["prIgnoreNotification"],
+  rebaseWhen: "conflicted",
+  commitBodyTable: true,
+  prHourlyLimit: 1,
+  printConfig: true,
+  pruneStaleBranches: true,
+  allowPostUpgradeCommandTemplating: true,
+  separateMajorMinor: true,
+  separateMultipleMajor: true,
+  separateMinorPatch: true,
+  enabledManagers: ["dockerfile", "gomod", "github-actions", "regex"],
+  recreateClosed: true,
+}
