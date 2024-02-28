@@ -35,7 +35,7 @@ if [ "${CI:-false}" = true ] ; then
 echo $BUILD_IMAGE_TOKEN | docker login ghcr.io -u $BUILD_IMAGE_USER --password-stdin
 fi
 
-export VERSION=$(git fetch --quiet origin main && git show origin/main:Makefile | grep "BUILDER_IMAGE_VERSION :=" | sed 's/.*BUILDER_IMAGE_VERSION := //' | sed 's/\s.*$//' )
+export VERSION=$(git fetch --quiet origin main && git show origin/main:.builder-image-version.txt)
 export NEW_VERSION=$(semver_upgrade patch ${VERSION})
 
 if docker manifest inspect ghcr.io/sovereigncloudstack/cso-builder:${VERSION} > /dev/null ; echo $?; then
