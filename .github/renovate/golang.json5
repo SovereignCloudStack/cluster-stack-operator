@@ -1,0 +1,45 @@
+{
+  golang: {
+    postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
+  },
+  // https://docs.renovatebot.com/configuration-options/#constraints
+  "constraints": {
+    "go": "1.21"
+  },
+  packageRules: [
+    {
+      description: "Disable Golang update for major and minor versions",
+      matchManagers: ["dockerfile"],
+      matchDepNames: ["docker.io/library/golang"],
+      matchUpdateTypes: ["major", "minor"],
+      enabled: false,
+    },
+    {
+      description: "Disable slim-sprig",
+      matchManagers: ["gomod"],
+      matchDepNames: ["github.com/go-task/slim-sprig"],
+      matchPaths: ["hack/tools/**"],
+      enabled: false,
+    },
+    {
+      description: "Disable update controller-tools",
+      matchManagers: ["gomod"],
+      matchDepNames: ["sigs.k8s.io/controller-runtime", "sigs.k8s.io/controller-tools", "github.com/google/go-github/v52"],
+      matchUpdateTypes: ["major", "minor"],
+      enabled: false,
+    },
+    {
+      description: "Disable update k8s packages",
+      matchManagers: ["gomod"],
+      matchDepNames: ["k8s.io/api", "k8s.io/apimachinery", "k8s.io/apiserver", "k8s.io/client-go", "k8s.io/kubectl", "k8s.io/code-generator"],
+      matchUpdateTypes: ["patch"],
+      enabled: true,
+    },
+    {
+      description: "Disable update cluster-api",
+      matchManagers: ["gomod"],
+      matchDepNames: ["sigs.k8s.io/cluster-api", "sigs.k8s.io/cluster-api/test", "sigs.k8s.io/cluster-api/hack/tools"],
+      enabled: false,
+    },
+  ],
+}
