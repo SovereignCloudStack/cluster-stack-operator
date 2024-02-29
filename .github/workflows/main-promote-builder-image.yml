@@ -10,7 +10,7 @@ jobs:
     name: Promote Latest tag to cso Builder Image
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sovereigncloudstack/cso-builder:1.0.0
+      image: ghcr.io/sovereigncloudstack/cso-builder:1.0.1
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.github_token }}
