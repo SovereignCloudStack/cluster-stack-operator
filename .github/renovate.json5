@@ -44,4 +44,5 @@
   separateMinorPatch: true,
   enabledManagers: ["dockerfile", "gomod", "github-actions", "regex"],
   recreateClosed: true,
+  labels: ["Container"]
 }
