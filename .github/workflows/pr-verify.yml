@@ -22,3 +22,22 @@ jobs:
 
       - name: Verify Shellcheck
         run: make verify-shellcheck
+
+      - name: Generate Token
+        uses: actions/create-github-app-token@e8e39f73bb84fdf315a015fa3104f314c0a258b4 # v1
+        id: generate-token
+        with:
+          app-id: ${{ secrets.SCS_APP_ID }}
+          private-key: ${{ secrets.SCS_APP_PRIVATE_KEY }}
+
+      - name: Generate Labels
+        uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5
+        with:
+          configuration-path: .github/labeler.yaml
+          repo-token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Sync Labels
+        uses: EndBug/label-sync@52074158190acb45f3077f9099fea818aa43f97a # v2
+        with:
+          config-file: .github/labels.yaml
+          token: ${{ steps.generate-token.outputs.token }}
