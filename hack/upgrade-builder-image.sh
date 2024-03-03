@@ -38,6 +38,9 @@ fi
 export VERSION=$(git fetch --quiet origin main && git show origin/main:.builder-image-version.txt)
 export NEW_VERSION=$(semver_upgrade patch ${VERSION})
 
+echo "$NEW_VERSION" > .builder-image-version.txt
+echo "Wrote new version $NEW_VERSION to .builder-image-version.txt"
+
 if docker manifest inspect ghcr.io/sovereigncloudstack/cso-builder:${VERSION} > /dev/null ; echo $?; then
 
   sed -i -e "/^BUILDER_IMAGE_VERSION /s/:=.*$/:= ${NEW_VERSION}/" Makefile
