@@ -19,6 +19,7 @@ IMAGE_PREFIX ?= ghcr.io/sovereigncloudstack
 STAGING_IMAGE = $(CONTROLLER_SHORT)-staging
 BUILDER_IMAGE = $(IMAGE_PREFIX)/$(CONTROLLER_SHORT)-builder
 BUILDER_IMAGE_VERSION = $(shell cat .builder-image-version.txt)
+HACK_TOOLS_BIN_VERSION = $(shell cat ./hack/tools/bin/version.txt)
 
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
@@ -80,16 +81,19 @@ MGT_CLUSTER_KUBECONFIG ?= ".mgt-cluster-kubeconfig.yaml"
 
 # Kubebuilder.
 export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.25.0
+# versions 
+CTLPTL_VERSION := 0.8.25
 
 ##@ Binaries
 ############
 # Binaries #
 ############
+# need in CI for releasing
 CONTROLLER_GEN := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
-controller-gen: $(CONTROLLER_GEN) ## Build a local copy of controller-gen
 $(CONTROLLER_GEN): # Build controller-gen from tools folder.
 	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.12.0
 
+# need this in CI for releasing
 KUSTOMIZE := $(abspath $(TOOLS_BIN_DIR)/kustomize)
 kustomize: $(KUSTOMIZE) ## Build a local copy of kustomize
 $(KUSTOMIZE): # Build kustomize from tools folder.
@@ -114,24 +118,10 @@ $(SETUP_ENVTEST): # Build setup-envtest from tools folder.
 CTLPTL := $(abspath $(TOOLS_BIN_DIR)/ctlptl)
 ctlptl: $(CTLPTL) ## Build a local copy of ctlptl
 $(CTLPTL):
-	go install github.com/tilt-dev/ctlptl/cmd/ctlptl@v0.8.20
-
-CLUSTERCTL := $(abspath $(TOOLS_BIN_DIR)/clusterctl)
-clusterctl: $(CLUSTERCTL) ## Build a local copy of clusterctl
-$(CLUSTERCTL):
-	curl -sSLf https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.5.0/clusterctl-$$(go env GOOS)-$$(go env GOARCH) -o $(CLUSTERCTL)
-	chmod a+rx $(CLUSTERCTL)
-
-KIND := $(abspath $(TOOLS_BIN_DIR)/kind)
-kind: $(KIND) ## Build a local copy of kind
-$(KIND):
-	go install sigs.k8s.io/kind@v0.20.0
+	curl -sSL https://github.com/tilt-dev/ctlptl/releases/download/v$(CTLPTL_VERSION)/ctlptl.$(CTLPTL_VERSION).linux.x86_64.tar.gz | tar xz -C $(TOOLS_BIN_DIR) ctlptl
 
 KUBECTL := $(abspath $(TOOLS_BIN_DIR)/kubectl)
-kubectl: $(KUBECTL) ## Build a local copy of kubectl
-$(KUBECTL):
-	curl -fsSL "https://dl.k8s.io/release/v1.27.3/bin/$$(go env GOOS)/$$(go env GOARCH)/kubectl" -o $(KUBECTL)
-	chmod a+rx $(KUBECTL)
+
 
 HELM := $(abspath $(TOOLS_BIN_DIR)/helm)
 helm: $(HELM) ## Build a local copy of helm
@@ -181,7 +171,7 @@ $(GOTESTSUM):
 	go install gotest.tools/gotestsum@v1.10.0
 
 
-all-tools: $(KIND) $(KUBECTL) $(CLUSTERCTL) $(CTLPTL) $(SETUP_ENVTEST) $(ENVSUBST) $(KUSTOMIZE) $(CONTROLLER_GEN)
+all-tools: get-dependencies $(CTLPTL) $(SETUP_ENVTEST) $(ENVSUBST) $(KUSTOMIZE) $(CONTROLLER_GEN)
 	echo 'done'
 
 ##@ Development
@@ -197,7 +187,7 @@ delete-bootstrap-cluster: $(CTLPTL)  ## Deletes Kind-dev Cluster
 	$(CTLPTL) delete registry cso-registry
 
 .PHONY: cluster
-cluster: $(CTLPTL) $(KUBECTL) ## Creates kind-dev Cluster
+cluster: get-dependencies $(CTLPTL) $(KUBECTL) ## Creates kind-dev Cluster
 	@# Fail early. Background: After Tilt started, changing .envrc has no effect for processes
 	@# started via Tilt. That's why this should fail early.
 	./hack/kind-dev.sh
@@ -281,12 +271,6 @@ set-manifest-image:
 set-manifest-pull-policy:
 	$(info Updating kustomize pull policy file for default resource)
 	sed -i'' -e 's@imagePullPolicy: .*@imagePullPolicy: '"$(PULL_POLICY)"'@' $(TARGET_RESOURCE)
-
-builder-image-promote-latest:
-	./hack/ensure-env-variables.sh USERNAME PASSWORD
-	skopeo copy --src-creds=$(USERNAME):$(PASSWORD) --dest-creds=$(USERNAME):$(PASSWORD) \
-		docker://$(BUILDER_IMAGE):$(BUILDER_IMAGE_VERSION) \
-		docker://$(BUILDER_IMAGE):latest
 
 ##@ Binary
 ##########
@@ -545,5 +529,31 @@ create-workload-cluster-docker: $(ENVSUBST) $(KUBECTL)
 	cat .cluster.yaml | $(ENVSUBST) - | $(KUBECTL) apply -f -
 
 .PHONY: tilt-up
-tilt-up: env-vars-for-wl-cluster $(ENVSUBST) $(KUBECTL) $(KUSTOMIZE) $(TILT) cluster  ## Start a mgt-cluster & Tilt. Installs the CRDs and deploys the controllers
+tilt-up: env-vars-for-wl-cluster get-dependencies $(ENVSUBST) $(TILT) cluster  ## Start a mgt-cluster & Tilt. Installs the CRDs and deploys the controllers
 	EXP_CLUSTER_RESOURCE_SET=true $(TILT) up --port=10351
+
+BINARIES = clusterctl controller-gen helm kind kubectl kustomize trivy
+get-dependencies:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	docker run --rm -t -i \
+		-v $(shell pwd):/src/cluster-stack-operator \
+		$(BUILDER_IMAGE):$(BUILDER_IMAGE_VERSION) $@;
+else
+	@if [ "$(HACK_TOOLS_BIN_VERSION)" != "$(BUILDER_IMAGE_VERSION)" ]; then \
+		echo "Updating binaries"; \
+		rm -rf hack/tools/bin; \
+		mkdir -p $(TOOLS_BIN_DIR); \
+		cp ./.builder-image-version.txt $(TOOLS_BIN_DIR)/version.txt; \
+		for tool in $(BINARIES); do \
+			if command -v $$tool > /dev/null; then \
+				cp `command -v $$tool` $(TOOLS_BIN_DIR); \
+				echo "copied $$tool to $(TOOLS_BIN_DIR)"; \
+			else \
+				echo "$$tool not found"; \
+			fi; \
+		done; \
+	else \
+		echo "No action required"; \
+		echo "Binaries are up to date"; \
+	fi
+endif

@@ -1,3 +1,4 @@
+export PATH="$(pwd)/hack/tools/bin/:$PATH"
 export KUBECONFIG=$PWD/.mgt-cluster-kubeconfig.yaml
 export K8S_VERSION=1-27
 export GIT_PROVIDER_B64=Z2l0aHVi
