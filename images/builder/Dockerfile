@@ -41,8 +41,6 @@ ARG KUBECTL_VERSION="v1.27.3"
 ARG KUSTOMIZE_VERSION="v5.3.0"
 # renovate: datasource=github-tags depName=aquasecurity/trivy
 ARG TRIVY_VERSION="v0.48.3"
-# renovate: datasource=github-tags depName=containers/skopeo
-ARG SKOPEO_VERSION="v1.14.1"
 # renovate: datasource=github-tags depName=kubernetes-sigs/controller-tools
 ARG CONTROLLER_GEN_VERSION="v0.14.0"
 
@@ -55,7 +53,6 @@ RUN apk add -U --no-cache \
     kind=~${KIND_VERSION#v} \
     kubectl=~${KUBECTL_VERSION#v} \
     kustomize=~${KUSTOMIZE_VERSION#v} \
-    skopeo=~${SKOPEO_VERSION#v} \
     trivy=~${TRIVY_VERSION#v} 
 
 # Install Golang CI Lint
@@ -97,7 +94,6 @@ COPY --from=wolfi /usr/bin/helm /usr/bin/helm
 COPY --from=wolfi /usr/bin/kubectl /usr/bin/kubectl
 COPY --from=wolfi /usr/bin/kind /usr/bin/kind
 COPY --from=wolfi /usr/bin/kustomize /usr/bin/kustomize
-COPY --from=wolfi /usr/bin/skopeo /usr/bin/skopeo
 COPY --from=wolfi /usr/bin/trivy /usr/bin/trivy
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin

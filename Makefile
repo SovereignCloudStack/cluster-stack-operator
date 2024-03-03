@@ -272,12 +272,6 @@ set-manifest-pull-policy:
 	$(info Updating kustomize pull policy file for default resource)
 	sed -i'' -e 's@imagePullPolicy: .*@imagePullPolicy: '"$(PULL_POLICY)"'@' $(TARGET_RESOURCE)
 
-builder-image-promote-latest:
-	./hack/ensure-env-variables.sh USERNAME PASSWORD
-	skopeo copy --src-creds=$(USERNAME):$(PASSWORD) --dest-creds=$(USERNAME):$(PASSWORD) \
-		docker://$(BUILDER_IMAGE):$(BUILDER_IMAGE_VERSION) \
-		docker://$(BUILDER_IMAGE):latest
-
 ##@ Binary
 ##########
 # Binary #
