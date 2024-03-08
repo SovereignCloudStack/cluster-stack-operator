@@ -690,13 +690,13 @@ func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 
 					return false
 				},
-				GenericFunc: func(e event.GenericEvent) bool {
+				GenericFunc: func(_ event.GenericEvent) bool {
 					return false
 				},
-				CreateFunc: func(e event.CreateEvent) bool {
+				CreateFunc: func(_ event.CreateEvent) bool {
 					return false
 				},
-				DeleteFunc: func(e event.DeleteEvent) bool {
+				DeleteFunc: func(_ event.DeleteEvent) bool {
 					return true
 				},
 			}),
@@ -709,7 +709,7 @@ func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 // for ClusterStacks that might get updated by changes in ClusterStackReleases.
 func (*ClusterStackReconciler) ClusterStackReleaseToClusterStack(ctx context.Context) handler.MapFunc {
 	logger := log.FromContext(ctx)
-	return func(ctx context.Context, o client.Object) []reconcile.Request {
+	return func(_ context.Context, o client.Object) []reconcile.Request {
 		result := []reconcile.Request{}
 
 		m, ok := o.(*csov1alpha1.ClusterStackRelease)

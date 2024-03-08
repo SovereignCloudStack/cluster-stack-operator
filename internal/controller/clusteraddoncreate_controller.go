@@ -105,13 +105,13 @@ func (r *ClusterAddonCreateReconciler) SetupWithManager(ctx context.Context, mgr
 		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log.FromContext(ctx), r.WatchFilterValue)).
 		WithEventFilter(predicate.Funcs{
 			// We're only interested in the create events for a cluster object
-			DeleteFunc: func(e event.DeleteEvent) bool {
+			DeleteFunc: func(_ event.DeleteEvent) bool {
 				return false
 			},
-			GenericFunc: func(e event.GenericEvent) bool {
+			GenericFunc: func(_ event.GenericEvent) bool {
 				return false
 			},
-			UpdateFunc: func(e event.UpdateEvent) bool {
+			UpdateFunc: func(_ event.UpdateEvent) bool {
 				return false
 			},
 		}).

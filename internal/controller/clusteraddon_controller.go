@@ -427,13 +427,13 @@ func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 
 				return false
 			},
-			GenericFunc: func(e event.GenericEvent) bool {
+			GenericFunc: func(_ event.GenericEvent) bool {
 				return false
 			},
-			CreateFunc: func(e event.CreateEvent) bool {
+			CreateFunc: func(_ event.CreateEvent) bool {
 				return false
 			},
-			DeleteFunc: func(e event.DeleteEvent) bool {
+			DeleteFunc: func(_ event.DeleteEvent) bool {
 				return false
 			},
 		},
@@ -446,7 +446,7 @@ func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 
 // clusterToClusterAddon enqueues requests for clusterAddons on change of cluster objects.
 func clusterToClusterAddon(_ context.Context) handler.MapFunc {
-	return func(ctx context.Context, o client.Object) []reconcile.Request {
+	return func(_ context.Context, o client.Object) []reconcile.Request {
 		clusterAddonName := types.NamespacedName{
 			Namespace: o.GetNamespace(),
 			Name:      fmt.Sprintf("cluster-addon-%s", o.GetName()),
