@@ -40,6 +40,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	controllerruntimecontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
@@ -95,18 +96,25 @@ func main() {
 
 	syncPeriod := 5 * time.Minute
 
+	var watchNamespaces map[string]cache.Config
+	if watchNamespace != "" {
+		watchNamespaces = map[string]cache.Config{
+			watchNamespace: {},
+		}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                        scheme,
-		MetricsBindAddress:            metricsAddr,
-		Port:                          9443,
 		HealthProbeBindAddress:        probeAddr,
 		LeaderElection:                enableLeaderElection,
 		LeaderElectionID:              "clusterstack.x-k8s.io",
 		LeaderElectionNamespace:       leaderElectionNamespace,
 		LeaderElectionResourceLock:    "leases",
 		LeaderElectionReleaseOnCancel: true,
-		Namespace:                     watchNamespace,
-		SyncPeriod:                    &syncPeriod,
+		Cache: cache.Options{
+			SyncPeriod:        &syncPeriod,
+			DefaultNamespaces: watchNamespaces,
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

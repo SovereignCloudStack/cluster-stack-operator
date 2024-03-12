@@ -50,11 +50,15 @@ jobs:
       - name: Install go modules for test
         shell: bash
         run: |
-          GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
+          go mod download
 
       - name: Running unit tests
         env:
+          GIT_PROVIDER: github
+          GIT_ORG_NAME: SovereignCloudStack
+          GIT_REPOSITORY_NAME: cluster-stacks
           GO111MODULE: "on"
+          GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
         run: make test-unit
 
       - name: Running integration tests workloadcluster
