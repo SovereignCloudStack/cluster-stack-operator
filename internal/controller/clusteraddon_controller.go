@@ -291,7 +291,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 		}
 
-		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 		clusterAddon.Spec.Version = releaseAsset.Meta.Versions.Components.ClusterAddon
 
 		if clusterAddon.Status.Ready {
@@ -327,6 +326,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
 			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
+			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+
 			// store the release kubernetes version and current hook
 			clusterAddon.Status.Ready = true
 
@@ -347,6 +348,11 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			if shouldRequeue {
 				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 			}
+
+		}
+
+		if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
+			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 		}
 
 		// Helm chart has been applied successfully
