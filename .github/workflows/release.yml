@@ -83,12 +83,11 @@ jobs:
       - name: Generate SBOM CSO
         shell: bash
         # To-Do: generate SBOM from source after https://github.com/kubernetes-sigs/bom/issues/202 is fixed
-        # To-Do: format SBOM output to json after cosign v2.0 is released with https://github.com/sigstore/cosign/pull/2479
         run: |
-          bom generate -o sbom_ci_main_cso_${{ steps.metacso.outputs.version }}-spdx.json \
+          bom generate --format=json -o sbom_ci_main_cso_${{ steps.metacso.outputs.version }}-spdx.json \
           --image=ghcr.io/sovereigncloudstack/cso:${{ steps.metacso.outputs.version }}
 
-      - name: Attach SBOM to Container Images cso
+      - name: Attest SBOM to Container Images cso
         run: |
           cosign attest --yes --type=spdxjson --predicate sbom_ci_main_cso_${{ steps.metacso.outputs.version }}-spdx.json ghcr.io/sovereigncloudstack/cso@${{ steps.docker_build_release_cso.outputs.digest }}
 
@@ -132,6 +131,7 @@ jobs:
       - manager-image
     steps:
       - name: Set env
+        shell: bash
         run: echo "RELEASE_TAG=${GITHUB_REF:10}" >> $GITHUB_ENV
 
       - name: checkout code
