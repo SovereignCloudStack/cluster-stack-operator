@@ -110,6 +110,9 @@ const (
 
 	// GitTokenOrEnvVariableNotSetReason is used when user don't specify the token or environment variable.
 	GitTokenOrEnvVariableNotSetReason = "GitTokenOrEnvVariableNotSet" //#nosec
+
+	// FailedCreateGithubClientReason is used when user don't specify the token or environment variable.
+	FailedCreateGithubClientReason = "FailedCreateGithubClient" //#nosec
 )
 
 const (

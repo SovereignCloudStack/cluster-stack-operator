@@ -1,0 +1,26 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+  namespace: "${NAMESPACE}"
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.128.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  topology:
+    class: docker-ferrol-1-27-v2
+    controlPlane:
+      metadata: {}
+      replicas: 1
+    variables:
+      - name: imageRepository
+        value: ""
+    version: v1.27.3
+    workers:
+      machineDeployments:
+        - class: workeramd64
+          name: md-0
+          replicas: 1
