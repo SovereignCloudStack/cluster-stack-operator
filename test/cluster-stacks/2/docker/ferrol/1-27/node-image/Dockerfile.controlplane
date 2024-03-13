@@ -1,0 +1,3 @@
+FROM kindest/node:v1.27.3 AS base
+# This is an example. For a real infrastructure provider, you
+# would have some scripts to create a custom machine image.

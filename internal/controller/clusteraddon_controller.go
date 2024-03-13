@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/release"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/workloadcluster"
+	"github.com/go-logr/logr"
 	sprig "github.com/go-task/slim-sprig"
 	"github.com/google/cel-go/cel"
 	celtypes "github.com/google/cel-go/common/types"
@@ -64,6 +66,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -81,11 +84,12 @@ type RestConfigSettings struct {
 type ClusterAddonReconciler struct {
 	client.Client
 	RestConfigSettings
-	ReleaseDirectory       string
-	KubeClientFactory      kube.Factory
-	AssetsClientFactory    assetsclient.Factory
-	WatchFilterValue       string
-	WorkloadClusterFactory workloadcluster.Factory
+	ReleaseDirectory                      string
+	KubeClientFactory                     kube.Factory
+	AssetsClientFactory                   assetsclient.Factory
+	WatchFilterValue                      string
+	WorkloadClusterFactory                workloadcluster.Factory
+	clusterStackRelDownloadDirectoryMutex sync.Mutex
 }
 
 //+kubebuilder:rbac:groups=clusterstack.x-k8s.io,resources=clusteraddons,verbs=get;list;watch;create;update;patch;delete
@@ -209,6 +213,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		return reconcile.Result{}, fmt.Errorf("failed to get cluster addon config path: %w", err)
 	}
 
+	logger := log.FromContext(ctx)
+
 	// Check whether current Helm chart has been applied in the workload cluster. If not, then we need to apply the helm chart (again).
 	// the spec.clusterStack is only set after a Helm chart from a ClusterStack has been applied successfully.
 	// If it is not set, the Helm chart has never been applied.
@@ -272,6 +278,31 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		return ctrl.Result{}, nil
 
 	} else {
+		in.addonStagesInput, err = r.getAddonStagesInput(clusterAddon, in.restConfig, in.clusterAddonChartPath)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+		}
+
+		if clusterAddon.Spec.ClusterStack != "" {
+			oldClusterStackAddonChartPath, requeue, err := r.downloadOldClusterStackRelease(ctx, clusterAddon, logger)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to download old cluster stack releases: %w", err)
+			}
+			if requeue {
+				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+
+			// src - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1.tgz
+			// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
+			in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldClusterStackAddonChartPath, ".tgz")
+
+			logger.Info("old cluster stack's cluster addon chart path", "path", in.oldDestinationClusterAddonChartDir)
+
+			if err := unTarContent(oldClusterStackAddonChartPath, in.oldDestinationClusterAddonChartDir); err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to untar cluster addon chart: %q: %w", oldClusterStackAddonChartPath, err)
+			}
+		}
+
 		if clusterAddon.Spec.Hook != clusterAddon.Status.CurrentHook {
 			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
 			clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
@@ -297,11 +328,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		if clusterAddon.Status.Ready {
 			return reconcile.Result{}, nil
-		}
-
-		in.addonStagesInput, err = getAddonStagesInput(r, in.restConfig, in.clusterAddonChartPath)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
 		}
 
 		// clusteraddon.yaml in the release.
@@ -396,14 +422,15 @@ type templateAndApplyClusterAddonInput struct {
 }
 
 type addonStagesInput struct {
-	kubeClient                      kube.Client
-	dynamicClient                   *dynamic.DynamicClient
-	discoverClient                  *discovery.DiscoveryClient
-	chartMap                        map[string]os.DirEntry
-	destinationClusterAddonChartDir string
+	kubeClient                         kube.Client
+	dynamicClient                      *dynamic.DynamicClient
+	discoverClient                     *discovery.DiscoveryClient
+	chartMap                           map[string]os.DirEntry
+	newDestinationClusterAddonChartDir string
+	oldDestinationClusterAddonChartDir string
 }
 
-func getAddonStagesInput(r *ClusterAddonReconciler, restConfig *rest.Config, clusterAddonChart string) (addonStagesInput, error) {
+func (r *ClusterAddonReconciler) getAddonStagesInput(clusterAddon *csov1alpha1.ClusterAddon, restConfig *rest.Config, clusterAddonChart string) (addonStagesInput, error) {
 	var (
 		addonStages addonStagesInput
 		err         error
@@ -422,15 +449,15 @@ func getAddonStagesInput(r *ClusterAddonReconciler, restConfig *rest.Config, clu
 
 	// src - /tmp/cluster-stacks/docker-ferrol1-27-v1/docker-ferrol-27-cluster-addon-v1.tgz
 	// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
-	addonStages.destinationClusterAddonChartDir = strings.TrimSuffix(clusterAddonChart, ".tgz")
-	if err := unTarContent(clusterAddonChart, addonStages.destinationClusterAddonChartDir); err != nil {
+	addonStages.newDestinationClusterAddonChartDir = strings.TrimSuffix(clusterAddonChart, ".tgz")
+	if err := unTarContent(clusterAddonChart, addonStages.newDestinationClusterAddonChartDir); err != nil {
 		return addonStagesInput{}, fmt.Errorf("failed to untar cluster addon chart: %q: %w", clusterAddonChart, err)
 	}
 
 	// Read all the helm charts in the un-tared cluster addon.
-	subDirs, err := os.ReadDir(addonStages.destinationClusterAddonChartDir)
+	subDirs, err := os.ReadDir(addonStages.newDestinationClusterAddonChartDir)
 	if err != nil {
-		return addonStagesInput{}, fmt.Errorf("failed to read directories inside: %q: %w", addonStages.destinationClusterAddonChartDir, err)
+		return addonStagesInput{}, fmt.Errorf("failed to read directories inside: %q: %w", addonStages.newDestinationClusterAddonChartDir, err)
 	}
 
 	// Create a map for faster lookup
@@ -470,9 +497,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 
 func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage clusteraddon.Stage, in templateAndApplyClusterAddonInput) (bool, error) {
 	var (
-		newResources  []*csov1alpha1.Resource
 		shouldRequeue bool
-		buildTemplate []byte
 		err           error
 	)
 
@@ -518,7 +543,7 @@ check:
 
 	case csov1alpha1.ApplyingOrDeleting:
 		if stage.Action == clusteraddon.Apply {
-			newResources, shouldRequeue, err = helmTemplateAndApply(ctx, in.kubeClient, in, stage.HelmChartName, buildTemplate, false)
+			shouldRequeue, err = helmTemplateAndApplyNewClusterStack(ctx, in, stage.HelmChartName)
 			if err != nil {
 				return false, fmt.Errorf("failed to helm template and apply: %w", err)
 			}
@@ -533,12 +558,13 @@ check:
 
 				return true, nil
 			}
+
 			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
 			goto check
 
 		} else {
 			// Delete part
-			newResources, shouldRequeue, err = helmTemplateAndDelete(ctx, in, stage.HelmChartName, buildTemplate)
+			shouldRequeue, err = helmTemplateAndDeleteNewClusterStack(ctx, in, stage.HelmChartName)
 			if err != nil {
 				return false, fmt.Errorf("failed to delete helm chart: %w", err)
 			}
@@ -573,20 +599,153 @@ check:
 
 					return true, nil
 				}
-				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for pre condition: %w", err)
+				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for post condition: %w", err)
 			}
 		}
 		in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.Done
 	}
 
-	in.clusterAddon.Status.Resources = append(in.clusterAddon.Status.Resources, newResources...)
-
 	return false, nil
 }
 
-func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte, shouldDelete bool) ([]*csov1alpha1.Resource, bool, error) {
-	subDirPath := filepath.Join(in.destinationClusterAddonChartDir, helmChartName)
+// downloadOldClusterStackRelease downloads the old cluster stack if not present and returns release clusterAddon chart path if requeue and error.
+func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Context, clusterAddon *csov1alpha1.ClusterAddon, logger logr.Logger) (string, bool, error) {
+	// initiate assets client.
+	gc, err := r.AssetsClientFactory.NewClient(ctx)
+	if err != nil {
+		isSet := conditions.IsFalse(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition)
+		conditions.MarkFalse(clusterAddon,
+			csov1alpha1.AssetsClientAPIAvailableCondition,
+			csov1alpha1.FailedCreateAssetsClientReason,
+			clusterv1.ConditionSeverityError,
+			err.Error(),
+		)
+		record.Warnf(clusterAddon, "FailedCreateAssetsClient", err.Error())
 
+		// give the assets client a second change
+		if isSet {
+			return "", true, nil
+		}
+		return "", false, nil
+	}
+
+	conditions.MarkTrue(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition)
+
+	// check if old cluster stack release is present or not.
+	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), r.ReleaseDirectory)
+	if err != nil {
+		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		return "", true, nil
+	}
+	if download {
+		logger.Info("the old cluster stack is not present", "clusterstack", clusterAddon.Spec.ClusterStack)
+		// if download is true, it means that the release assets have not been downloaded yet
+
+		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.ReleaseAssetsNotDownloadedYetReason, clusterv1.ConditionSeverityInfo, "assets not downloaded yet")
+
+		// this is the point where we download the release.
+		// acquire lock so that only one reconcile loop can download the release
+		r.clusterStackRelDownloadDirectoryMutex.Lock()
+
+		if err := downloadReleaseAssets(ctx, release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), releaseAsset.LocalDownloadPath, gc); err != nil {
+			return "", false, fmt.Errorf("failed to download release assets: %w", err)
+		}
+
+		r.clusterStackRelDownloadDirectoryMutex.Unlock()
+
+		// requeue to make sure release assets can be accessed
+		return "", true, nil
+	}
+
+	if err := releaseAsset.CheckHelmCharts(); err != nil {
+		msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
+		conditions.MarkFalse(
+			clusterAddon,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError,
+			msg,
+		)
+		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
+		return "", false, nil
+	}
+
+	// set downloaded condition if able to read metadata file
+	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
+
+	return releaseAsset.ClusterAddonChartPath(), false, nil
+}
+
+func helmTemplateAndApplyNewClusterStack(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	var (
+		buildTemplate   []byte
+		oldHelmTemplate []byte
+		err             error
+	)
+
+	if in.oldDestinationClusterAddonChartDir != "" {
+		oldClusterStackSubDirPath := filepath.Join(in.oldDestinationClusterAddonChartDir, helmChartName)
+		oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, buildTemplate, true)
+		if err != nil {
+			return false, fmt.Errorf("failed to template old helm chart: %w", err)
+		}
+		logger.Info("oldClusterStackAddonChartPath v1", "path", oldClusterStackSubDirPath)
+	}
+
+	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
+	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate, true)
+	if err != nil {
+		return false, fmt.Errorf("failed to template new helm chart: %w", err)
+	}
+	logger.Info("newClusterStackSubDirPath v1", "path", newClusterStackSubDirPath)
+
+	shouldRequeue, err := in.kubeClient.ApplyNewClusterStack(ctx, oldHelmTemplate, newHelmTemplate)
+	if err != nil {
+		return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
+	}
+
+	return shouldRequeue, nil
+}
+
+func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+	// logger := log.FromContext(ctx)
+	var (
+		buildTemplate []byte
+		// oldHelmTemplate []byte
+		err error
+	)
+
+	// if in.oldDestinationClusterAddonChartDir != "" {
+	// 	oldClusterStackSubDirPath := filepath.Join(in.oldDestinationClusterAddonChartDir, helmChartName)
+	// 	oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, buildTemplate, true)
+	// 	if err != nil {
+	// 		return false, fmt.Errorf("failed to template old helm chart: %w", err)
+	// 	}
+	// 	logger.Info("oldClusterStackAddonChartPath v1", "path", oldClusterStackSubDirPath)
+	// }
+
+	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
+	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate, true)
+	if err != nil {
+		return false, fmt.Errorf("failed to template new helm chart: %w", err)
+	}
+	// logger.Info("newClusterStackSubDirPath v1", "path", newClusterStackSubDirPath)
+
+	shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, newHelmTemplate)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
+	}
+
+	return shouldRequeue, nil
+}
+
+func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte, shouldDelete bool) ([]*csov1alpha1.Resource, bool, error) {
+	subDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
+	loggger := log.FromContext(ctx)
+
+	loggger.Info("path of the subdir", "path", subDirPath)
 	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate, true)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
@@ -601,7 +760,7 @@ func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templa
 }
 
 func helmTemplateAndDelete(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte) ([]*csov1alpha1.Resource, bool, error) {
-	subDirPath := filepath.Join(in.destinationClusterAddonChartDir, helmChartName)
+	subDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
 
 	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate, true)
 	if err != nil {
