@@ -114,6 +114,16 @@ func getResourceMap(resources []*csov1alpha1.Resource) map[types.NamespacedName]
 	return resourceMap
 }
 
+func getResourceMapOfUnstructuredObjects(objects []*unstructured.Unstructured) map[types.NamespacedName]*unstructured.Unstructured {
+	objectMap := make(map[types.NamespacedName]*unstructured.Unstructured)
+
+	for i, object := range objects {
+		objectMap[types.NamespacedName{Name: object.GetName(), Namespace: object.GetNamespace()}] = objects[i]
+	}
+
+	return objectMap
+}
+
 func setLabel(target *unstructured.Unstructured, key, val string) error {
 	labels, _, err := unstructured.NestedStringMap(target.Object, "metadata", "labels")
 	if err != nil {
@@ -232,6 +242,29 @@ func resourcesToBeDeleted(oldResources []*csov1alpha1.Resource, currentObjs []*u
 			}
 		}
 	}
+	return toBeDeleted
+}
+
+func resourcesToBeDeletedFromUnstructuredObjects(oldObjects, newObjects []*unstructured.Unstructured) []*unstructured.Unstructured {
+	toBeDeleted := make([]*unstructured.Unstructured, 0, len(oldObjects))
+
+	newObjectMap := make(map[types.NamespacedName]struct{})
+	for _, newObj := range newObjects {
+		newObjectMap[types.NamespacedName{Name: newObj.GetName(), Namespace: newObj.GetNamespace()}] = struct{}{}
+	}
+
+	for i, oldObj := range oldObjects {
+		nameSpacedName := types.NamespacedName{
+			Name:      oldObj.GetName(),
+			Namespace: oldObj.GetNamespace(),
+		}
+
+		// delete resources that are not listed in the new objects anymore
+		if _, found := newObjectMap[nameSpacedName]; !found {
+			toBeDeleted = append(toBeDeleted, oldObjects[i])
+		}
+	}
+
 	return toBeDeleted
 }
 

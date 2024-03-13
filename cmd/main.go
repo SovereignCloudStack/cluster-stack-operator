@@ -177,6 +177,7 @@ func main() {
 		WatchFilterValue:       watchFilterValue,
 		KubeClientFactory:      kube.NewFactory(),
 		WorkloadClusterFactory: workloadcluster.NewFactory(),
+		GitHubClientFactory:    gitFactory,
 	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{MaxConcurrentReconciles: clusterAddonConcurrency}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterAddon")
 		os.Exit(1)
