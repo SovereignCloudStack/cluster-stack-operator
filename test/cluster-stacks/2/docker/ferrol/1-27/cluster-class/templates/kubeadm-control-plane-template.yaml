@@ -1,0 +1,29 @@
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: {{ .Release.Name }}-{{ .Chart.Version }}-control-plane
+  namespace: {{ .Release.Namespace }}
+spec:
+  template:
+    spec:
+      kubeadmConfigSpec:
+        clusterConfiguration:
+          controllerManager:
+            extraArgs: { enable-hostpath-provisioner: 'true' }
+          apiServer:
+            # host.docker.internal is required by kubetest when running on MacOS because of the way ports are proxied.
+            certSANs: [localhost, 127.0.0.1, 0.0.0.0, host.docker.internal]
+        initConfiguration:
+          nodeRegistration:
+            # We have to set the criSocket to containerd as kubeadm defaults to docker runtime if both containerd and docker sockets are found
+            criSocket: unix:///var/run/containerd/containerd.sock
+            kubeletExtraArgs:
+              eviction-hard: 'nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%'
+              fail-swap-on: "false"
+        joinConfiguration:
+          nodeRegistration:
+            # We have to set the criSocket to containerd as kubeadm defaults to docker runtime if both containerd and docker sockets are found
+            criSocket: unix:///var/run/containerd/containerd.sock
+            kubeletExtraArgs:
+              eviction-hard: 'nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%'
+              fail-swap-on: "false"
