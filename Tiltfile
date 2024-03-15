@@ -207,7 +207,7 @@ def deploy_cso():
             "cso-serving-cert:certificate",
             "cso-cluster-stack-variables:secret",
             "cso-selfsigned-issuer:issuer",
-            #"cso-validating-webhook-configuration:validatingwebhookconfiguration",
+            "cso-validating-webhook-configuration:validatingwebhookconfiguration",
         ],
         new_name = "cso-misc",
         labels = ["CSO"],

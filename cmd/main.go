@@ -43,6 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	controllerruntimecontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 var (
@@ -104,8 +105,11 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                        scheme,
-		HealthProbeBindAddress:        probeAddr,
+		Scheme:                 scheme,
+		HealthProbeBindAddress: probeAddr,
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port: 9443,
+		}),
 		LeaderElection:                enableLeaderElection,
 		LeaderElectionID:              "clusterstack.x-k8s.io",
 		LeaderElectionNamespace:       leaderElectionNamespace,
@@ -187,6 +191,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	setUpWebhookWithManager(mgr)
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -207,4 +212,26 @@ func main() {
 	wg.Done()
 	// Wait for all target cluster managers to gracefully shut down.
 	wg.Wait()
+}
+
+func setUpWebhookWithManager(mgr ctrl.Manager) {
+	if err := (&csov1alpha1.ClusterStackWebhook{
+		LocalMode: localMode,
+		Client:    mgr.GetClient(),
+	}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ClusterStack")
+		os.Exit(1)
+	}
+	if err := (&csov1alpha1.ClusterAddon{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ClusterAddon")
+		os.Exit(1)
+	}
+	if err := (&csov1alpha1.Cluster{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Cluster")
+		os.Exit(1)
+	}
+	if err := (&csov1alpha1.ClusterStackReleaseWebhook{Client: mgr.GetClient()}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ClusterStackRelease")
+		os.Exit(1)
+	}
 }

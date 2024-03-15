@@ -22,6 +22,7 @@ import (
 
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/test/helpers"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
+	fakeworkloadcluster "github.com/SovereignCloudStack/cluster-stack-operator/pkg/workloadcluster/fake"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -34,7 +35,11 @@ const (
 )
 
 const (
-	testClusterStackName = "docker-ferrol-1-27-v1"
+	testClusterStackName   = "docker-ferrol-1-27-v1"
+	testClusterStackNameV2 = "docker-ferrol-1-27-v2"
+	testClusterStackNameV3 = "docker-ferrol-1-27-v3"
+
+	testKubernetesVersion = "v1.27.3"
 )
 
 func TestControllers(t *testing.T) {
@@ -64,6 +69,13 @@ var _ = BeforeSuite(func() {
 		ReleaseDirectory:    "./../../test/releases",
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
 
+	Expect((&ClusterAddonReconciler{
+		Client:                 testEnv.Manager.GetClient(),
+		ReleaseDirectory:       "./../../test/releases",
+		KubeClientFactory:      testEnv.KubeClientFactory,
+		WorkloadClusterFactory: fakeworkloadcluster.NewFactory(),
+	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
+
 	Expect((&ClusterAddonCreateReconciler{
 		Client: testEnv.Manager.GetClient(),
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
@@ -74,6 +86,8 @@ var _ = BeforeSuite(func() {
 	}()
 
 	<-testEnv.Manager.Elected()
+	// wait for webhook port to be open prior to running tests
+	testEnv.WaitForWebhooks()
 })
 
 var _ = AfterSuite(func() {

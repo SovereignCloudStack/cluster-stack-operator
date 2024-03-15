@@ -23,6 +23,7 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -253,6 +254,89 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 				testEnv.GetLogger().Info("status of ClusterStackRelease", "status", foundClusterStackRelease.Status)
 				return utils.IsPresentAndFalseWithReason(ctx, testEnv.Client, key, &foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition, csov1alpha1.ProcessOngoingReason)
 			}, timeout, interval).Should(BeTrue())
+		})
+	})
+})
+
+var _ = Describe("ClusterStackRelease validation", func() {
+	var testNs *corev1.Namespace
+
+	BeforeEach(func() {
+		var err error
+		testNs, err = testEnv.CreateNamespace(ctx, "clusterstack-validation")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		Eventually(func() error {
+			return testEnv.Cleanup(ctx, testNs)
+		}, timeout, interval).Should(BeNil())
+	})
+
+	Context("validate delete", func() {
+		var (
+			clusterStackRelease      *csov1alpha1.ClusterStackRelease
+			key                      types.NamespacedName
+			foundClusterStackRelease csov1alpha1.ClusterStackRelease
+			cluster                  clusterv1.Cluster
+		)
+
+		BeforeEach(func() {
+			key = types.NamespacedName{Namespace: testNs.Name, Name: "docker-ferrol-1-27-v1"}
+			By("creating ClusterStackRelease")
+			clusterStackRelease = &csov1alpha1.ClusterStackRelease{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "docker-ferrol-1-27-v1",
+					Namespace: testNs.Name,
+				},
+			}
+			Expect(testEnv.Create(ctx, clusterStackRelease)).To(Succeed())
+
+			By("checking if ClusterStackRelease is created properly")
+			Eventually(func() error {
+				return testEnv.Get(ctx, key, &foundClusterStackRelease)
+			}, timeout, interval).Should(BeNil())
+
+			By("creating cluster")
+			cluster = clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster",
+					Namespace: testNs.Name,
+				},
+				Spec: clusterv1.ClusterSpec{
+					Topology: &clusterv1.Topology{
+						Class:   "docker-ferrol-1-27-v1",
+						Version: "v1.27.3",
+					},
+				},
+			}
+
+			testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
+		})
+
+		AfterEach(func() {
+			Eventually(func() error {
+				return testEnv.Cleanup(ctx, &cluster, clusterStackRelease)
+			}, timeout, interval).Should(BeNil())
+		})
+
+		It("should not allow delete if ClusterStackRelease is in use by Cluster", func() {
+			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+			Expect(testEnv.Delete(ctx, clusterStackRelease)).ToNot(Succeed())
+		})
+
+		It("should allow delete if existing Clusters reference ClusterClasses that do not follow the cluster stack naming convention", func() {
+			cluster.Spec.Topology.Class = "test-cluster-class"
+			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+
+			Expect(testEnv.Delete(ctx, clusterStackRelease)).To(Succeed())
+		})
+
+		It("should allow delete if existing Clusters reference different ClusterClasses", func() {
+			cluster.Spec.Topology.Class = "docker-ferrol-1-26-v5"
+			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+
+			Expect(testEnv.Delete(ctx, clusterStackRelease)).To(Succeed())
 		})
 	})
 })
