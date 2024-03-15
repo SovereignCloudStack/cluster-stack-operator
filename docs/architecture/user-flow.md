@@ -2,7 +2,7 @@
 
 It is essential to understand the flow of what you have to do as a user and what happens in the background. 
 
-The [Quickstart guide](quickstart.md) goes over all small steps you have to do to. If you are just interested in getting started, then have a look there.
+The [Quickstart guide](../topics/quickstart.md) goes over all small steps you have to do to. If you are just interested in getting started, then have a look there.
 
 In the following, we will not go into the detail of every command, but will focus more on a high-level of what you have to do and of what happens in the background. 
 
