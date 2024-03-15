@@ -62,11 +62,9 @@ def deploy_capi():
                 patch_args_with_extra_args("capi-kubeadm-bootstrap-system", "capi-kubeadm-bootstrap-controller-manager", kb_extra_args)
 
 def deploy_capd():
-    version = settings.get("capi_version")
-    capd_uri = "https://github.com/kubernetes-sigs/cluster-api/releases/download/{}/infrastructure-components-development.yaml".format(version)
-    cmd = "curl -sSL {} | {} | kubectl apply -f -".format(capd_uri, envsubst_cmd)
+    yaml = './capd.yaml'
+    cmd = "kubectl apply -f capd.yaml"
     local(cmd, quiet = True)
-
 
 def prepare_environment():
     local("kubectl create namespace cluster --dry-run=client -o yaml | kubectl apply -f -")
