@@ -184,7 +184,7 @@ env-vars-for-wl-cluster:
 .PHONY: delete-bootstrap-cluster
 delete-bootstrap-cluster: $(CTLPTL)  ## Deletes Kind-dev Cluster
 	$(CTLPTL) delete cluster kind-cso
-	$(CTLPTL) delete registry cso-registry
+	$(CTLPTL) delete registry kind-registry
 
 .PHONY: cluster
 cluster: get-dependencies $(CTLPTL) $(KUBECTL) ## Creates kind-dev Cluster
