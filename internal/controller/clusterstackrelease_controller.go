@@ -89,6 +89,13 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 	defer func() {
 		conditions.SetSummary(clusterStackRelease)
 
+		// Check if the object has a deletion timestamp and release assets have not been downloaded properly.
+		// In that case, the controller cannot perform a proper reconcileDelete and we just remove the finalizer.
+		if !clusterStackRelease.DeletionTimestamp.IsZero() &&
+			conditions.IsFalse(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition) {
+			controllerutil.RemoveFinalizer(clusterStackRelease, csov1alpha1.ClusterStackReleaseFinalizer)
+		}
+
 		if err := patchHelper.Patch(ctx, clusterStackRelease); err != nil {
 			reterr = fmt.Errorf("failed to patch ClusterStackRelease: %w", err)
 		}
