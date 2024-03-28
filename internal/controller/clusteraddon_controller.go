@@ -354,7 +354,7 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 // The return yaml file path will be /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz.yaml.
 func helmTemplateClusterAddon(chartPath string, helmTemplate []byte) ([]byte, error) {
 	helmCommand := "helm"
-	helmArgs := []string{"template"}
+	helmArgs := []string{"template", "--include-crds"}
 
 	input := bytes.NewBuffer(helmTemplate)
 
