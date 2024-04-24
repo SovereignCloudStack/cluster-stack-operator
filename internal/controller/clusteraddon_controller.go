@@ -356,7 +356,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 
-			// store the release kubernetes version and current hook
+			// remove the helm chart status from the status.
+			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
 			clusterAddon.Status.Ready = true
 
 			return ctrl.Result{}, nil
@@ -387,6 +388,11 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
 		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
+		// remove the helm chart status from the status.
+		clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+
+		// store the release kubernetes version and current hook
+		clusterAddon.Status.KubernetesVersion = releaseAsset.Meta.Versions.Kubernetes
 		clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
 		clusterAddon.Status.Ready = true
 	}
