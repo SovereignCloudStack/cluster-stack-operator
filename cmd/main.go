@@ -26,6 +26,7 @@ import (
 
 	//+kubebuilder:scaffold:imports
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
+	"github.com/SovereignCloudStack/cluster-stack-operator/extension/handlers"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/controller"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/csoversion"
 	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
@@ -38,6 +39,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/controllers/remote"
+	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
+	runtimehooksv1 "sigs.k8s.io/cluster-api/exp/runtime/hooks/api/v1alpha1"
+	"sigs.k8s.io/cluster-api/exp/runtime/server"
 	dockerv1beta1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,9 +54,15 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+
+	// catalog contains all information about RuntimeHooks.
+	catalog = runtimecatalog.New()
 )
 
 func init() {
+	// Adds to the catalog all the RuntimeHooks defined in cluster API.
+	_ = runtimehooksv1.AddToCatalog(catalog)
+
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(csov1alpha1.AddToScheme(scheme))
 	utilruntime.Must(dockerv1beta1.AddToScheme(scheme))
@@ -74,6 +85,8 @@ var (
 	localMode                      bool
 	qps                            float64
 	burst                          int
+	hookPort                       int
+	hookCertDir                    string
 )
 
 func main() {
@@ -91,7 +104,8 @@ func main() {
 	flag.BoolVar(&localMode, "local", false, "Enable local mode where no release assets will be downloaded from a remote Git repository. Useful for implementing cluster stacks.")
 	flag.Float64Var(&qps, "qps", 50, "Enable custom query per second for kubernetes API server")
 	flag.IntVar(&burst, "burst", 100, "Enable custom burst defines how many queries the API server will accept before enforcing the limit established by qps")
-
+	flag.IntVar(&hookPort, "hook-port", 9442, "hook server port")
+	flag.StringVar(&hookCertDir, "hook-cert-dir", "/tmp/k8s-hook-server/serving-certs/", "hook cert dir, only used when hook-port is specified.")
 	flag.Parse()
 
 	ctrl.SetLogger(utillog.GetDefaultLogger(logLevel))
@@ -146,7 +160,6 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	if err = (&controller.ClusterStackReconciler{
 		Client:              mgr.GetClient(),
@@ -201,13 +214,87 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager", "version", csoversion.Get().String())
-	if err := mgr.Start(ctx); err != nil {
-		setupLog.Error(err, "problem running manager")
+	// Create a http server for serving runtime extensions
+	hookServer, err := server.New(server.Options{
+		Catalog: catalog,
+		Port:    hookPort,
+		CertDir: hookCertDir,
+	})
+	if err != nil {
+		setupLog.Error(err, "error creating webhook server")
 		os.Exit(1)
 	}
 
-	wg.Done()
-	// Wait for all target cluster managers to gracefully shut down.
+	// Lifecycle Hooks
+	// Gets a client to access the Kubernetes cluster where this RuntimeExtension will be deployed to;
+	// this is a requirement specific of the lifecycle hooks implementation for Cluster APIs E2E tests.
+	restConfig.UserAgent = remote.DefaultClusterAPIUserAgent("cluster-stack-operator-extension-manager")
+
+	// Create the ExtensionHandlers for the lifecycle hooks
+	lifecycleExtensionHandlers := handlers.NewExtensionHandlers(mgr.GetClient(), scheme)
+
+	setupLog.Info("Add extension handlers")
+	if err := hookServer.AddExtensionHandler(server.ExtensionHandler{
+		Hook:        runtimehooksv1.BeforeClusterUpgrade,
+		Name:        "before-cluster-upgrade",
+		HandlerFunc: lifecycleExtensionHandlers.DoBeforeClusterUpgrade,
+	}); err != nil {
+		setupLog.Error(err, "error adding handler")
+		os.Exit(1)
+	}
+
+	if err := hookServer.AddExtensionHandler(server.ExtensionHandler{
+		Hook:        runtimehooksv1.AfterClusterUpgrade,
+		Name:        "after-cluster-upgrade",
+		HandlerFunc: lifecycleExtensionHandlers.DoAfterClusterUpgrade,
+	}); err != nil {
+		setupLog.Error(err, "error adding handler")
+		os.Exit(1)
+	}
+
+	if err := hookServer.AddExtensionHandler(server.ExtensionHandler{
+		Hook:        runtimehooksv1.AfterControlPlaneInitialized,
+		Name:        "after-control-plane-initialized",
+		HandlerFunc: lifecycleExtensionHandlers.DoAfterControlPlaneInitialized,
+	}); err != nil {
+		setupLog.Error(err, "error adding handler")
+		os.Exit(1)
+	}
+
+	errChan := make(chan error, 1)
+
+	wg.Add(1)
+
+	go func() {
+		setupLog.Info("starting manager", "version", csoversion.Get().String())
+		if err := mgr.Start(ctx); err != nil {
+			setupLog.Error(err, "problem running manager")
+			errChan <- err
+		}
+		wg.Done()
+	}()
+
+	wg.Add(1)
+
+	go func() {
+		setupLog.Info("starting hook server")
+		if err := hookServer.Start(ctx); err != nil {
+			setupLog.Error(err, "problem running hook server")
+			errChan <- err
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		select {
+		case err := <-errChan:
+			setupLog.Error(err, "Received error")
+			os.Exit(1)
+		case <-ctx.Done():
+			setupLog.Info("shutting down")
+		}
+	}()
+
+	// wait for all processes to shut down
 	wg.Wait()
 }
