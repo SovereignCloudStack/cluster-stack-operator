@@ -1,0 +1,18 @@
+# the following config is for teaching kustomize where to look at when substituting vars.
+# It requires kustomize v2.1.0 or newer to work properly.
+nameReference:
+- kind: Service
+  version: v1
+  fieldSpecs:
+  - kind: ExtensionConfig
+    group: runtime.cluster.x-k8s.io
+    path: spec/clientConfig/service/name
+
+namespace:
+- kind: ExtensionConfig
+  group: runtime.cluster.x-k8s.io
+  path: spec/clientConfig/service/namespace
+  create: true
+
+varReference:
+- path: metadata/annotations
