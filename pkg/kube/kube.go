@@ -74,22 +74,13 @@ func (k *kube) ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplat
 	if err != nil {
 		return false, fmt.Errorf("failed to parse old cluster stack template: %w", err)
 	}
-	logger.Info("oldObjects value", "val", oldObjects)
 
 	newObjects, err := parseK8sYaml(newTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse new cluster stack template: %w", err)
 	}
 
-	// oldObjectMap := getResourceMapOfUnstructuredObjects(oldObjects)
 	for _, newObject := range newObjects {
-		// do nothing if found
-		// if _, found := oldObjectMap[types.NamespacedName{Name: newObject.GetName(), Namespace: newObject.GetNamespace()}]; found {
-		// 	continue
-		// }
-
-		logger.Info("object to be applied", "object", newObject.GetName(), "kind", newObject.GetKind())
-
 		if err := setLabel(newObject, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
 			return false, fmt.Errorf("error setting label: %w", err)
 		}
@@ -112,8 +103,6 @@ func (k *kube) ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplat
 	}
 
 	for _, object := range resourcesToBeDeletedFromUnstructuredObjects(oldObjects, newObjects) {
-		logger.Info("resource are being deleted", "kind", object.GetKind(), "name", object.GetName(), "namespace", object.GetNamespace())
-
 		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
 		if err != nil {
 			return false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
@@ -131,27 +120,12 @@ func (k *kube) ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplat
 }
 
 func (k *kube) DeleteNewClusterStack(ctx context.Context, template []byte) (shouldRequeue bool, err error) {
-	logger := log.FromContext(ctx)
-
-	// oldObjects, err := parseK8sYaml(oldTemplate)
-	// if err != nil {
-	// 	return false, fmt.Errorf("failed to parse old cluster stack template: %w", err)
-	// }
-
 	objects, err := parseK8sYaml(template)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse new cluster stack template: %w", err)
 	}
 
-	// oldObjectMap := getResourceMapOfUnstructuredObjects(objects)
 	for _, object := range objects {
-		// do nothing if synced
-		// if _, found := oldObjectMap[types.NamespacedName{Name: newObject.GetName(), Namespace: newObject.GetNamespace()}]; found {
-		// 	continue
-		// }
-
-		logger.Info("object to be deleted", "object", object.GetName(), "kind", object.GetKind())
-
 		if err := setLabel(object, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
 			return false, fmt.Errorf("error setting label: %w", err)
 		}
