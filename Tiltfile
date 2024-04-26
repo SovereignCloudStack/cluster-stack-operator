@@ -18,7 +18,6 @@ settings = {
         "kind-cso",
     ],
     "local_mode": False,
-    "runtime_sdk": True,
     "deploy_cert_manager": True,
     "preload_images_for_kind": True,
     "kind_cluster_name": "cso",
@@ -110,12 +109,6 @@ def fixup_yaml_empty_arrays(yaml_str):
     yaml_str = yaml_str.replace("conditions: null", "conditions: []")
     return yaml_str.replace("storedVersions: null", "storedVersions: []")
 
-tilt_dockerfile_header_runtime = """
-FROM docker.io/library/alpine:3.18.0
-WORKDIR /
-COPY extension/.tiltbuild/manager .
-"""
-
 ## This should have the same versions as the Dockerfile
 tilt_dockerfile_header_cso = """
 FROM docker.io/alpine/helm:3.12.2 as helm
@@ -191,53 +184,11 @@ def deploy_cso():
         labels = ["CSO"],
     )
 
-def deploy_runtime_extension():
-    yaml = str(kustomizesub("./extension/config/default"))
+def deploy_capd():
+    yaml = './capd.yaml'
+    cmd = "kubectl apply -f capd.yaml"
+    local(cmd, quiet = True)
 
-    local_resource(
-        name = "runtime-components",
-        cmd = ["sh", "-ec", sed_cmd, yaml, "|", envsubst_cmd],
-        labels = ["runtime"],
-    )
-
-    local_resource(
-        "runtime-manager",
-        cmd = 'cd extension; mkdir -p .tiltbuild;CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags \'-extldflags "-static"\' -o .tiltbuild/manager main.go',
-        deps = ["extension/handlers", "extension/main.go"],
-        labels = ["runtime"],
-    )
-
-    entrypoint = ["/manager"]
-    extra_args = settings.get("extra_args")
-    if extra_args:
-        entrypoint.extend(extra_args)
-
-    docker_build_with_restart(
-    ref = "ghcr.io/sovereigncloudstack/runtime-sdk-staging",
-    context = ".",
-    dockerfile_contents = tilt_dockerfile_header_runtime,
-    entrypoint = entrypoint,
-    live_update = [
-        sync("extension/.tiltbuild/manager", "/manager"),
-        # sync(".release", "/tmp/cluster-stacks"),
-    ],
-    ignore = ["templates"],
-    )
-
-    k8s_yaml(blob(yaml))
-    k8s_resource(workload = "test-runtime-sdk", labels = ["runtime"])
-    k8s_resource(
-        objects = [
-            "runtimesdk:namespace",
-            # "test-runtime-sdk:deployment",
-            "test-runtime-sdk-sa:serviceaccount",
-            "test-runtime-sdk-role:clusterrole",
-            "test-runtime-sdk-role-rolebinding:clusterrolebinding",
-            "runtime-sdk-selfsigned-issuer:issuer",
-        ],
-        new_name = "runtime-misc",
-        labels = ["runtime"],
-    )
 
 def clusterstack():
     k8s_resource(objects = ["clusterstack:clusterstack"], new_name = "clusterstack", labels = ["CLUSTERSTACK"])
@@ -305,9 +256,6 @@ deploy_capd()
 deploy_cso()
 
 clusterstack()
-
-if settings.get("runtime_sdk"):
-    deploy_runtime_extension()
 
 waitforsystem()
 

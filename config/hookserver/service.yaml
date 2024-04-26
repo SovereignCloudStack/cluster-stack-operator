@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook-server-svc
+  namespace: system
+spec:
+  ports:
+    - port: 443
+      targetPort: 9442
+  selector:
+    control-plane: cso-controller-manager
