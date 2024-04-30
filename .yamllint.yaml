@@ -17,13 +17,18 @@ rules:
     min-spaces-from-content: 1
 
 yaml-files:
-  - '*.yaml'
-  - '*.yml'
+  - "*.yaml"
+  - "*.yml"
 
 ignore:
-  - '**/vendor/**'
-  - '.cache'
+  - "**/vendor/**"
+  - ".cache"
   - _artifacts
   - config/crd/**/*.yaml
   - config/rbac/**/*.yaml
   - config/webhook/**/*.yaml
+  - test/infrastructure/**/config/webhook/**/*.yaml
+  - test/infrastructure/**/config/crd/**/*.yaml
+  - test/infrastructure/**/config/rbac/**/*.yaml
+  - test/releases/**
+  - test/cluster-stacks/**
