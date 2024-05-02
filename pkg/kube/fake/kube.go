@@ -50,10 +50,10 @@ func (*kube) Delete(_ context.Context, _ []byte, _ []*csov1alpha1.Resource) (_ [
 	return nil, false, nil
 }
 
-func (*kube) ApplyNewClusterStack(_ context.Context, _, _ []byte) (_ bool, _ error) {
-	return false, nil
+func (*kube) ApplyNewClusterStack(_ context.Context, _, _ []byte) (_ []*csov1alpha1.Resource, _ bool, _ error) {
+	return nil, false, nil
 }
 
-func (*kube) DeleteNewClusterStack(_ context.Context, _ []byte) (_ bool, _ error) {
-	return false, nil
+func (*kube) DeleteNewClusterStack(_ context.Context, _ []byte) (_ []*csov1alpha1.Resource, _ bool, _ error) {
+	return nil, false, nil
 }
