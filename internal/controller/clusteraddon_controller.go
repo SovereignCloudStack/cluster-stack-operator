@@ -346,13 +346,16 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 
 			// Helm chart has been applied successfully
-			// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
 			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
-			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+			// remove the status resource if hook is finished
+			clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 			// remove the helm chart status from the status.
 			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+
+			// update the latest cluster class
+			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 			clusterAddon.Status.Ready = true
 
 			return ctrl.Result{}, nil
@@ -372,7 +375,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			if shouldRequeue {
 				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 			}
-
 		}
 
 		if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
@@ -385,6 +387,9 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		// remove the helm chart status from the status.
 		clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+
+		// remove the status resource if hook is finished
+		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 		// store the release kubernetes version and current hook
 		clusterAddon.Status.KubernetesVersion = releaseAsset.Meta.Versions.Kubernetes
@@ -520,7 +525,7 @@ func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage cluster
 
 check:
 	switch in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] {
-	case csov1alpha1.None:
+	case csov1alpha1.None, csov1alpha1.WaitingForPreCondition:
 		// If WaitForPreCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPreCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
@@ -566,6 +571,9 @@ check:
 			}
 			logger.V(1).Info("finished applying helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 
+			// remove status resource if applied successfully
+			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+
 			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
 			goto check
 
@@ -588,6 +596,9 @@ check:
 				return true, nil
 			}
 			logger.V(1).Info("finished deleting helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+
+			// remove status resource if deleted successfully
+			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
 			goto check
@@ -708,10 +719,12 @@ func helmTemplateAndApplyNewClusterStack(ctx context.Context, in templateAndAppl
 		return false, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
 
-	shouldRequeue, err := in.kubeClient.ApplyNewClusterStack(ctx, oldHelmTemplate, newHelmTemplate)
+	newResources, shouldRequeue, err := in.kubeClient.ApplyNewClusterStack(ctx, oldHelmTemplate, newHelmTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
 	}
+
+	in.clusterAddon.Status.Resources = newResources
 
 	return shouldRequeue, nil
 }
@@ -728,10 +741,12 @@ func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApp
 		return false, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
 
-	shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, newHelmTemplate)
+	newResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, newHelmTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
 	}
+
+	in.clusterAddon.Status.Resources = newResources
 
 	return shouldRequeue, nil
 }
