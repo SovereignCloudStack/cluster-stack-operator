@@ -370,7 +370,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
 			shouldRequeue, err := r.executeStage(ctx, stage, in)
 			if err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
+				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %q: %w", stage.HelmChartName, err)
 			}
 			if shouldRequeue {
 				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
@@ -480,12 +480,12 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	clusterAddonChart := in.clusterAddonChartPath
 	var shouldRequeue bool
 
-	buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client)
+	buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client, false)
 	if err != nil {
 		return false, fmt.Errorf("failed to build template from cluster addon values: %w", err)
 	}
 
-	helmTemplate, err := helmTemplateClusterAddon(clusterAddonChart, buildTemplate, false)
+	helmTemplate, err := helmTemplateClusterAddon(clusterAddonChart, buildTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -554,7 +554,7 @@ check:
 	case csov1alpha1.ApplyingOrDeleting:
 		if stage.Action == clusteraddon.Apply {
 			logger.V(1).Info("starting to apply helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = helmTemplateAndApplyNewClusterStack(ctx, in, stage.HelmChartName)
+			shouldRequeue, err = r.templateAndApplyNewClusterStackAddonHelmChart(ctx, in, stage.HelmChartName)
 			if err != nil {
 				return false, fmt.Errorf("failed to helm template and apply: %w", err)
 			}
@@ -698,23 +698,40 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	return releaseAsset.ClusterAddonChartPath(), false, nil
 }
 
-func helmTemplateAndApplyNewClusterStack(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
 	var (
-		buildTemplate   []byte
-		oldHelmTemplate []byte
-		err             error
+		oldHelmTemplate  []byte
+		oldBuildTemplate []byte
+		newBuildTemplate []byte
+		err              error
 	)
 
 	if in.oldDestinationClusterAddonChartDir != "" {
 		oldClusterStackSubDirPath := filepath.Join(in.oldDestinationClusterAddonChartDir, helmChartName)
-		oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, buildTemplate, true)
+
+		if _, err := os.Stat(filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
+			oldBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client, true)
+			if err != nil {
+				return false, fmt.Errorf("failed to build template from old cluster addon values: %w", err)
+			}
+		}
+
+		oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate)
 		if err != nil {
 			return false, fmt.Errorf("failed to template old helm chart: %w", err)
 		}
 	}
 
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
-	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate, true)
+
+	if _, err := os.Stat(filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
+		newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client, true)
+		if err != nil {
+			return false, fmt.Errorf("failed to build template from new cluster addon values: %w", err)
+		}
+	}
+
+	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
@@ -736,7 +753,7 @@ func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApp
 	)
 
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
-	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate, true)
+	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
@@ -756,7 +773,7 @@ func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templa
 	loggger := log.FromContext(ctx)
 
 	loggger.Info("path of the subdir", "path", subDirPath)
-	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate, true)
+	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -772,7 +789,7 @@ func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templa
 func helmTemplateAndDelete(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte) ([]*csov1alpha1.Resource, bool, error) {
 	subDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
 
-	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate, true)
+	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -854,7 +871,7 @@ func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynami
 	return nil
 }
 
-func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client) ([]byte, error) {
+func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client, newWay bool) ([]byte, error) {
 	data, err := os.ReadFile(filepath.Clean(addonValuePath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the file %s: %w", addonValuePath, err)
@@ -895,14 +912,13 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 		return nil, fmt.Errorf("failed to execute template string %q on cluster %q: %w", string(data), cluster.GetName(), err)
 	}
 
-	expandedTemplate := buffer.String()
-	var unmarhallData interface{}
-	err = yaml.Unmarshal([]byte(expandedTemplate), &unmarhallData)
+	var unmarshalData interface{}
+	err = yaml.Unmarshal(buffer.Bytes(), &unmarshalData)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal expanded template: %w", err)
 	}
 
-	values, ok := unmarhallData.(map[interface{}]interface{})["values"].(string)
+	values, ok := unmarshalData.(map[string]interface{})["values"].(string)
 	if !ok {
 		return nil, fmt.Errorf("key 'values' not found in template of cluster addon helm chart")
 	}
@@ -915,7 +931,7 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 // Then it returns the path of the generated yaml file.
 // Example: helm template /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz
 // The return yaml file path will be /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz.yaml.
-func helmTemplateClusterAddon(chartPath string, helmTemplate []byte, newWay bool) ([]byte, error) {
+func helmTemplateClusterAddon(chartPath string, helmTemplate []byte) ([]byte, error) {
 	helmCommand := "helm"
 	helmArgs := []string{"template"}
 
@@ -928,9 +944,7 @@ func helmTemplateClusterAddon(chartPath string, helmTemplate []byte, newWay bool
 	helmTemplateCmd.Stderr = os.Stderr
 	helmTemplateCmd.Dir = filepath.Dir(chartPath)
 	helmTemplateCmd.Stdout = &cmdOutput
-	if !newWay {
-		helmTemplateCmd.Stdin = input
-	}
+	helmTemplateCmd.Stdin = input
 
 	if err := helmTemplateCmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to run helm template for %q: %w", chartPath, err)

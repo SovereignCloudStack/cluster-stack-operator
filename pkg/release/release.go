@@ -53,6 +53,9 @@ const (
 
 	metadataFileName       = "metadata.yaml"
 	clusterAddonValuesName = "cluster-addon-values.yaml"
+
+	// OverwriteYaml is the new cluster stack overwrite yaml.
+	OverwriteYaml = "overwrite.yaml"
 )
 
 // New returns a new release.
