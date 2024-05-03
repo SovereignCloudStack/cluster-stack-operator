@@ -1,4 +1,5 @@
-metrics-server:
-  commonLabels:
-    domain: "{{ .Cluster.spec.controlPlaneEndpoint.host }}"
-    clusterAddonVersion: "v2"
+values: |
+  metrics-server:
+    commonLabels:
+      domain: "{{ .Cluster.spec.controlPlaneEndpoint.host }}"
+      clusterAddonVersion: "v2"
