@@ -280,8 +280,13 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
 		}
 
+		var (
+			oldRelease release.Release
+			requeue    bool
+		)
+
 		if clusterAddon.Spec.ClusterStack != "" {
-			oldClusterStackAddonChartPath, requeue, err := r.downloadOldClusterStackRelease(ctx, clusterAddon)
+			oldRelease, requeue, err = r.downloadOldClusterStackRelease(ctx, clusterAddon)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed to download old cluster stack releases: %w", err)
 			}
@@ -291,10 +296,10 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 			// src - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1.tgz
 			// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
-			in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldClusterStackAddonChartPath, ".tgz")
+			in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldRelease.ClusterAddonChartPath(), ".tgz")
 
-			if err := unTarContent(oldClusterStackAddonChartPath, in.oldDestinationClusterAddonChartDir); err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed to untar cluster addon chart: %q: %w", oldClusterStackAddonChartPath, err)
+			if err := unTarContent(oldRelease.ClusterAddonChartPath(), in.oldDestinationClusterAddonChartDir); err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to untar cluster addon chart: %q: %w", oldRelease.ClusterAddonChartPath(), err)
 			}
 		}
 
@@ -306,7 +311,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		// In case the Kubernetes version stays the same, the hook server does not trigger.
 		// Therefore, we have to check whether the ClusterStack is upgraded and if that is the case, the ClusterAddons have to be upgraded as well.
-		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && clusterAddon.Status.KubernetesVersion == releaseAsset.Meta.Versions.Kubernetes {
+		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 			if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
 				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
 				clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
@@ -333,7 +338,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		// In case the Kubernetes version stayed the same during an upgrade, the hook server does not trigger and
 		// we just take the Helm charts that are supposed to be installed in the BeforeClusterUpgrade hook and apply them.
-		if clusterAddon.Status.KubernetesVersion == releaseAsset.Meta.Versions.Kubernetes {
+		if oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 			clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
 			for _, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
 				shouldRequeue, err := r.executeStage(ctx, stage, in)
@@ -391,8 +396,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// remove the status resource if hook is finished
 		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-		// store the release kubernetes version and current hook
-		clusterAddon.Status.KubernetesVersion = releaseAsset.Meta.Versions.Kubernetes
+		// set the current hook and make cluster addon ready
 		clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
 		clusterAddon.Status.Ready = true
 	}
@@ -633,7 +637,7 @@ check:
 }
 
 // downloadOldClusterStackRelease downloads the old cluster stack if not present and returns release clusterAddon chart path if requeue and error.
-func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Context, clusterAddon *csov1alpha1.ClusterAddon, logger logr.Logger) (string, bool, error) {
+func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Context, clusterAddon *csov1alpha1.ClusterAddon) (release.Release, bool, error) {
 	// initiate assets client.
 	gc, err := r.AssetsClientFactory.NewClient(ctx)
 	if err != nil {
@@ -648,9 +652,9 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 
 		// give the assets client a second change
 		if isSet {
-			return "", true, nil
+			return release.Release{}, true, nil
 		}
-		return "", false, nil
+		return release.Release{}, false, nil
 	}
 
 	conditions.MarkTrue(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition)
@@ -659,7 +663,7 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), r.ReleaseDirectory)
 	if err != nil {
 		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
-		return "", true, nil
+		return release.Release{}, true, nil
 	}
 	if download {
 		// if download is true, it means that the release assets have not been downloaded yet
@@ -670,13 +674,13 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 		r.clusterStackRelDownloadDirectoryMutex.Lock()
 
 		if err := downloadReleaseAssets(ctx, release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), releaseAsset.LocalDownloadPath, gc); err != nil {
-			return "", false, fmt.Errorf("failed to download release assets: %w", err)
+			return release.Release{}, false, fmt.Errorf("failed to download release assets: %w", err)
 		}
 
 		r.clusterStackRelDownloadDirectoryMutex.Unlock()
 
 		// requeue to make sure release assets can be accessed
-		return "", true, nil
+		return release.Release{}, true, nil
 	}
 
 	if err := releaseAsset.CheckHelmCharts(); err != nil {
@@ -689,13 +693,13 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 			msg,
 		)
 		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
-		return "", false, nil
+		return release.Release{}, false, nil
 	}
 
 	// set downloaded condition if able to read metadata file
 	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
 
-	return releaseAsset.ClusterAddonChartPath(), false, nil
+	return releaseAsset, false, nil
 }
 
 func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
