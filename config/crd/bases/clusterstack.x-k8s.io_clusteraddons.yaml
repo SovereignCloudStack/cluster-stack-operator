@@ -20,6 +20,10 @@ spec:
     - jsonPath: .metadata.ownerReferences[?(@.kind=="Cluster")].name
       name: Cluster
       type: string
+    - description: Present running hook
+      jsonPath: .spec.hook
+      name: Hook
+      type: string
     - jsonPath: .status.ready
       name: Ready
       type: boolean
@@ -168,9 +172,6 @@ spec:
                   - type
                   type: object
                 type: array
-              currentHook:
-                description: CurrentHook specifies the current running Hook.
-                type: string
               helmChartStatus:
                 additionalProperties:
                   description: HelmChartStatusConditions defines the status of helm
