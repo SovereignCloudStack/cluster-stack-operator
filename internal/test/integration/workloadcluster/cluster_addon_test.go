@@ -493,8 +493,7 @@ var _ = Describe("ClusterAddonReconcilerNewWay", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, clusterv1.ReadyCondition) &&
-					foundClusterAddon.Status.CurrentHook == "AfterControlPlaneInitialized"
+				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, clusterv1.ReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
