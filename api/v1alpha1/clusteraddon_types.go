@@ -64,10 +64,6 @@ type ClusterAddonStatus struct {
 	// +optional
 	Resources []*Resource `json:"resources,omitempty"`
 
-	// CurrentHook specifies the current running Hook.
-	// +optional
-	CurrentHook string `json:"currentHook,omitempty"`
-
 	// HelmChartStatus defines the status of helm chart in the cluster addon.
 	// +optional
 	HelmChartStatus map[string]HelmChartStatusConditions `json:"helmChartStatus,omitempty"`
@@ -84,6 +80,7 @@ type ClusterAddonStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.ownerReferences[?(@.kind==\"Cluster\")].name"
+// +kubebuilder:printcolumn:name="Hook",type="string",JSONPath=".spec.hook",description="Present running hook"
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of Cluster Addon"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason"
