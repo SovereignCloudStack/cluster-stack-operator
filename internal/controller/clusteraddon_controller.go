@@ -303,9 +303,10 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 		}
 
-		if clusterAddon.Spec.Hook != clusterAddon.Status.CurrentHook {
+		// if a hook is specified, we cannot be ready yet
+		// if a hook is set, it is expected that HelmChartAppliedCondition is removed
+		if clusterAddon.Spec.Hook != "" {
 			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
-			clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
 			clusterAddon.Status.Ready = false
 		}
 
@@ -314,7 +315,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 			if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
 				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
-				clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
 				clusterAddon.Status.Ready = false
 				conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			} else {
@@ -396,8 +396,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// remove the status resource if hook is finished
 		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-		// set the current hook and make cluster addon ready
-		clusterAddon.Status.CurrentHook = clusterAddon.Spec.Hook
+		// unset spec hook and make cluster addon ready
+		clusterAddon.Spec.Hook = ""
 		clusterAddon.Status.Ready = true
 	}
 
@@ -718,11 +718,11 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 			if err != nil {
 				return false, fmt.Errorf("failed to build template from old cluster addon values: %w", err)
 			}
-		}
 
-		oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate)
-		if err != nil {
-			return false, fmt.Errorf("failed to template old helm chart: %w", err)
+			oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate)
+			if err != nil {
+				return false, fmt.Errorf("failed to template old helm chart: %w", err)
+			}
 		}
 	}
 
@@ -807,7 +807,7 @@ func helmTemplateAndDelete(ctx context.Context, in templateAndApplyClusterAddonI
 }
 
 func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynamic.DynamicClient, discoveryClient *discovery.DiscoveryClient, waitCondition clusteraddon.WaitForCondition) error {
-	var evalMap = make(map[string]interface{})
+	evalMap := make(map[string]interface{})
 
 	env, err := cel.NewEnv()
 	if err != nil {
