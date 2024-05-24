@@ -28,6 +28,15 @@ const (
 	ClusterAddonFinalizer = "clusteraddon.clusterstack.x-k8s.io"
 )
 
+const StageAnnotation = "ClusterAddonStage"
+
+type StageAnnotationValue string
+
+const (
+	StageCreated  = StageAnnotationValue("created")
+	StageUpgraded = StageAnnotationValue("upgraded")
+)
+
 // StagePhase defines the status of helm chart in the cluster addon.
 type StagePhase string
 
@@ -131,6 +140,26 @@ func (r *ClusterAddon) SetStagePhase(helmChartName string, action clusteraddon.A
 			r.Status.Stages[i].Phase = phase
 		}
 	}
+}
+
+func (r *ClusterAddon) SetStageAnnotations(value StageAnnotationValue) {
+	if r.Annotations == nil {
+		r.Annotations = make(map[string]string, 0)
+	}
+	_, found := r.Annotations[StageAnnotation]
+	if !found {
+		r.Annotations[StageAnnotation] = string(value)
+	}
+}
+
+// HasAnnotation returns a bool if passed in annotation exists.
+func (r *ClusterAddon) HasStageAnnotation(value StageAnnotationValue) bool {
+	val, found := r.Annotations[StageAnnotation]
+	if found && val == string(value) {
+		return true
+	}
+
+	return false
 }
 
 // GetConditions returns the observations of the operational state of the ClusterAddon resource.

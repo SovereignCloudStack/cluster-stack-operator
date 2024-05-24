@@ -70,6 +70,20 @@ const (
 	ObjectLabelValueOwned = "owned"
 )
 
+func GetResourcesFromHelmTemplate(template []byte) ([]*csov1alpha1.Resource, error) {
+	objects, err := parseK8sYaml(template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resources from template: %w", err)
+	}
+
+	var resources []*csov1alpha1.Resource
+	for _, obj := range objects {
+		resources = append(resources, csov1alpha1.NewResourceFromUnstructured(obj))
+	}
+
+	return resources, nil
+}
+
 func parseK8sYaml(template []byte) ([]*unstructured.Unstructured, error) {
 	multidocReader := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(template)))
 	var objs []*unstructured.Unstructured
@@ -188,7 +202,7 @@ func setLabel(target *unstructured.Unstructured, key, val string) error {
 	return nil
 }
 
-func getDynamicResourceInterface(namespace string, restConfig *rest.Config, group schema.GroupVersionKind) (dynamic.ResourceInterface, error) {
+func GetDynamicResourceInterface(namespace string, restConfig *rest.Config, group schema.GroupVersionKind) (dynamic.ResourceInterface, error) {
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error creating dynamic client: %w", err)

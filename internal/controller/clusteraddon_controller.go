@@ -212,6 +212,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		return reconcile.Result{}, fmt.Errorf("failed to get cluster addon config path: %w", err)
 	}
 
+	logger := log.FromContext(ctx)
+
 	// Check whether current Helm chart has been applied in the workload cluster. If not, then we need to apply the helm chart (again).
 	// the spec.clusterStack is only set after a Helm chart from a ClusterStack has been applied successfully.
 	// If it is not set, the Helm chart has never been applied.
@@ -250,6 +252,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			}
 
+			clusterAddon.SetStageAnnotations(csov1alpha1.StageCreated)
+			clusterAddon.Spec.Hook = ""
 			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 			clusterAddon.Status.Ready = true
 			return ctrl.Result{}, nil
@@ -271,11 +275,14 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			// set condition that helm chart has been applied successfully
 			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 		}
+
+		clusterAddon.Spec.Hook = ""
+		clusterAddon.SetStageAnnotations(csov1alpha1.StageCreated)
 		clusterAddon.Status.Ready = true
 		return ctrl.Result{}, nil
 
 	} else {
-		in.addonStagesInput, err = r.getAddonStagesInput(clusterAddon, in.restConfig, in.clusterAddonChartPath)
+		in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
 		}
@@ -305,7 +312,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldRelease.ClusterAddonChartPath(), ".tgz")
 
 			if err := unTarContent(oldRelease.ClusterAddonChartPath(), in.oldDestinationClusterAddonChartDir); err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed to untar cluster addon chart: %q: %w", oldRelease.ClusterAddonChartPath(), err)
+				return reconcile.Result{}, fmt.Errorf("failed to untar old cluster stack cluster addon chart: %q: %w", oldRelease.ClusterAddonChartPath(), err)
 			}
 		}
 
@@ -397,7 +404,39 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 		}
 
+		logger.Info("the hook is here", "hook", in.clusterAddon.Spec.Hook)
+
 		if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
+			if clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
+				// create the list of old release objects
+				oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
+				if err != nil {
+					return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
+				}
+				logger.Info("here is the old cluster stack object list", "list", oldClusterStackObjectList)
+
+				newClusterStackObjectList, err := r.getNewReleaseObjects(ctx, in, clusterAddonConfig)
+				if err != nil {
+					return reconcile.Result{}, fmt.Errorf("failed to get new cluster stack object list from helm charts: %w", err)
+				}
+
+				logger.Info("here in the clean up begins", "currentList", newClusterStackObjectList)
+				shouldReque, err := r.cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
+				logger.Info("here in the clean up done", "currentList", newClusterStackObjectList, "reque", shouldReque)
+				if err != nil {
+					return reconcile.Result{}, fmt.Errorf("failed to clean up resources: %w", err)
+				}
+				if shouldReque {
+					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+				}
+
+				// set upgrade annotation once done
+				clusterAddon.SetStageAnnotations(csov1alpha1.StageUpgraded)
+			}
+
+			// if upgrade annotation is not present add the create annotation
+			clusterAddon.SetStageAnnotations(csov1alpha1.StageCreated)
+
 			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 		}
 
@@ -417,6 +456,153 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.ClusterAddonConfig) ([]*csov1alpha1.Resource, error) {
+	var (
+		newBuildTemplate []byte
+		resources        []*csov1alpha1.Resource
+	)
+
+	for _, stage := range clusterAddonConfig.AddonStages[in.clusterAddon.Spec.Hook] {
+		if _, err := os.Stat(filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml)); err == nil {
+			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client, true)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build template from new cluster addon values of the latest cluster stack: %w", err)
+			}
+		}
+
+		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName), newBuildTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to template new helm chart of the latest cluster stack: %w", err)
+		}
+
+		resource, err := kube.GetResourcesFromHelmTemplate(helmTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get resources form old cluster stack helm template of the latest cluster stack: %w", err)
+		}
+
+		if stage.Action == clusteraddon.Apply {
+			resources = append(resources, resource...)
+		} else {
+			resources = removeResourcesFromCurrentListOfObjects(resources, resource)
+		}
+	}
+
+	return resources, nil
+}
+
+// getOldReleaseObjects returns the old cluster stack objects in the workload cluster.
+func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.ClusterAddonConfig, oldRelease release.Release) ([]*csov1alpha1.Resource, error) {
+	// clusteraddon.yaml
+	clusterAddonConfigPath, err := r.getClusterAddonConfigPath(in.clusterAddon.Spec.ClusterStack)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get old cluster stack cluster addon config path: %w", err)
+	}
+
+	if _, err := os.Stat(clusterAddonConfigPath); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to verify the clusteraddon.yaml on old cluster stack release path %q with error: %w", clusterAddonConfigPath, err)
+		}
+
+		// this is the old way
+		buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, oldRelease.ClusterAddonValuesPath(), in.cluster, r.Client, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build template from the old cluster stack cluster addon values: %w", err)
+		}
+
+		helmTemplate, err := helmTemplateClusterAddon(oldRelease.ClusterAddonChartPath(), buildTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to template helm chart: %w", err)
+		}
+
+		resources, err := kube.GetResourcesFromHelmTemplate(helmTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get resources form old cluster stack helm template: %w", err)
+		}
+
+		return resources, nil
+	}
+
+	// this is the new way
+	// Read all the helm charts in new the un-tared cluster addon.
+
+	var (
+		newBuildTemplate []byte
+		resources        []*csov1alpha1.Resource
+
+		hook string
+	)
+
+	if in.clusterAddon.HasStageAnnotation(csov1alpha1.StageCreated) {
+		hook = "AfterControlPlaneInitialized"
+	} else {
+		hook = "BeforeClusterUpgrade"
+	}
+
+	for _, stage := range clusterAddonConfig.AddonStages[hook] {
+		if _, err := os.Stat(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml)); err == nil {
+			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client, true)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build template from new cluster addon values: %w", err)
+			}
+		}
+
+		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName), newBuildTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to template new helm chart: %w", err)
+		}
+
+		resource, err := kube.GetResourcesFromHelmTemplate(helmTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get resources form old cluster stack helm template: %w", err)
+		}
+
+		if stage.Action == clusteraddon.Apply {
+			resources = append(resources, resource...)
+		} else {
+			resources = removeResourcesFromCurrentListOfObjects(resources, resource)
+		}
+	}
+
+	return resources, nil
+}
+
+func (r *ClusterAddonReconciler) cleanUpResources(ctx context.Context, in templateAndApplyClusterAddonInput, oldList, newList []*csov1alpha1.Resource) (shouldRequeue bool, err error) {
+	// Create a map of items in the new slice for faster lookup
+	newMap := make(map[*csov1alpha1.Resource]bool)
+	for _, item := range newList {
+		newMap[item] = true
+	}
+
+	// Find extra objects in the old slice
+	var extraResources []*csov1alpha1.Resource
+	for _, item := range oldList {
+		if !newMap[item] {
+			extraResources = append(extraResources, item)
+		}
+	}
+	logger := log.FromContext(ctx)
+
+	logger.Info("diff in resources", "diff", extraResources)
+
+	for _, resource := range extraResources {
+		if resource.Namespace == "" {
+			resource.Namespace = clusterAddonNamespace
+		}
+		dr, err := kube.GetDynamicResourceInterface(resource.Namespace, in.restConfig, resource.GroupVersionKind())
+		if err != nil {
+			return false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
+		}
+
+		if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			reterr := fmt.Errorf("failed to delete object %q: %w", resource.GroupVersionKind(), err)
+			resource.Error = reterr.Error()
+			shouldRequeue = true
+		}
+	}
+
+	return shouldRequeue, nil
 }
 
 func (r *ClusterAddonReconciler) getClusterAddonConfigPath(clusterClassName string) (string, error) {
@@ -455,7 +641,7 @@ type addonStagesInput struct {
 	oldDestinationClusterAddonChartDir string
 }
 
-func (r *ClusterAddonReconciler) getAddonStagesInput(clusterAddon *csov1alpha1.ClusterAddon, restConfig *rest.Config, clusterAddonChart string) (addonStagesInput, error) {
+func (r *ClusterAddonReconciler) getAddonStagesInput(restConfig *rest.Config, clusterAddonChart string) (addonStagesInput, error) {
 	var (
 		addonStages addonStagesInput
 		err         error
@@ -476,7 +662,7 @@ func (r *ClusterAddonReconciler) getAddonStagesInput(clusterAddon *csov1alpha1.C
 	// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
 	addonStages.newDestinationClusterAddonChartDir = strings.TrimSuffix(clusterAddonChart, ".tgz")
 	if err := unTarContent(clusterAddonChart, addonStages.newDestinationClusterAddonChartDir); err != nil {
-		return addonStagesInput{}, fmt.Errorf("failed to untar cluster addon chart: %q: %w", clusterAddonChart, err)
+		return addonStagesInput{}, fmt.Errorf("failed to untar new cluster stack cluster addon chart: %q: %w", clusterAddonChart, err)
 	}
 
 	// Read all the helm charts in the un-tared cluster addon.
@@ -517,6 +703,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	}
 
 	in.clusterAddon.Status.Resources = newResources
+
 	return shouldRequeue, nil
 }
 
@@ -600,7 +787,7 @@ check:
 		} else {
 			// Delete part
 			logger.V(1).Info("starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = helmTemplateAndDeleteNewClusterStack(ctx, in, stage.HelmChartName)
+			shouldRequeue, err = r.helmTemplateAndDeleteNewClusterStack(ctx, in, stage.HelmChartName)
 			if err != nil {
 				return false, fmt.Errorf("failed to delete helm chart: %w", err)
 			}
@@ -729,6 +916,7 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 	if in.oldDestinationClusterAddonChartDir != "" {
 		oldClusterStackSubDirPath := filepath.Join(in.oldDestinationClusterAddonChartDir, helmChartName)
 
+		// we skip helm templating if last cluster stack don't follow the new convention.
 		if _, err := os.Stat(filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
 			oldBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client, true)
 			if err != nil {
@@ -761,12 +949,13 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 		return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
 	}
 
+	// This is for the current stage objects and will be removed once done.
 	in.clusterAddon.Status.Resources = newResources
 
 	return shouldRequeue, nil
 }
 
-func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+func (r *ClusterAddonReconciler) helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
 	var (
 		buildTemplate []byte
 		err           error
@@ -778,12 +967,13 @@ func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApp
 		return false, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
 
-	newResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, newHelmTemplate)
+	deletedResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, newHelmTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
 	}
 
-	in.clusterAddon.Status.Resources = newResources
+	// This is for the current stage objects and will be removed once done.
+	in.clusterAddon.Status.Resources = deletedResources
 
 	return shouldRequeue, nil
 }
@@ -1096,6 +1286,10 @@ func unTarContent(src, dst string) error {
 			}
 		case tar.TypeReg:
 			// Create regular files
+			if err := os.MkdirAll(filepath.Dir(targetPath), os.ModePerm); err != nil {
+				return fmt.Errorf("%q: creating directory: %w", filepath.Dir(targetPath), err)
+			}
+
 			outputFile, err := os.Create(filepath.Clean(targetPath))
 			if err != nil {
 				return fmt.Errorf("%q: creating file: %w", targetPath, err)
@@ -1117,4 +1311,22 @@ func unTarContent(src, dst string) error {
 	}
 
 	return nil
+}
+
+func removeResourcesFromCurrentListOfObjects(baseList []*csov1alpha1.Resource, itemsToRemove []*csov1alpha1.Resource) []*csov1alpha1.Resource {
+	// Create a map of items to remove for faster lookup
+	itemsMap := make(map[*csov1alpha1.Resource]bool)
+	for _, item := range itemsToRemove {
+		itemsMap[item] = true
+	}
+
+	// Create a new list without the items to remove
+	var newList []*csov1alpha1.Resource
+	for _, item := range baseList {
+		if !itemsMap[item] {
+			newList = append(newList, item)
+		}
+	}
+
+	return newList
 }
