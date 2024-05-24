@@ -89,7 +89,7 @@ func (k *kube) ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplat
 
 		// call the function and get dynamic.ResourceInterface
 		// getDynamicResourceInterface
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, newObject.GroupVersionKind())
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, newObject.GroupVersionKind())
 		if err != nil {
 			reterr := fmt.Errorf("failed to get dynamic resource interface: %w", err)
 			logger.Error(reterr, "failed to get dynamic resource interface", "obj", newObject.GetObjectKind().GroupVersionKind())
@@ -112,7 +112,7 @@ func (k *kube) ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplat
 	for _, object := range resourcesToBeDeletedFromUnstructuredObjects(oldObjects, newObjects) {
 		resource := csov1alpha1.NewResourceFromUnstructured(object)
 
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
 		}
@@ -144,7 +144,7 @@ func (k *kube) DeleteNewClusterStack(ctx context.Context, template []byte) (newR
 			return nil, false, fmt.Errorf("error setting label: %w", err)
 		}
 
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
 		}
@@ -189,7 +189,7 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 
 		// call the function and get dynamic.ResourceInterface
 		// getDynamicResourceInterface
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, obj.GroupVersionKind())
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, obj.GroupVersionKind())
 		if err != nil {
 			reterr := fmt.Errorf("failed to get dynamic resource interface: %w", err)
 			resource.Error = reterr.Error()
@@ -223,7 +223,7 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 			// getDynamicResourceInterface
 			logger.Info("resource are being deleted", "kind", resource.Kind, "name", resource.Name, "namespace", resource.Namespace)
 
-			dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
+			dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
 			if err != nil {
 				return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
 			}
