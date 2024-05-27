@@ -2,6 +2,9 @@
 This document describes the release process of cluster-stack-operator. 
 The release process is done using GitHub actions. The release workflow triggers when a tag is pushed starting with `v*` 
 
+> [!NOTE]
+> Before the release, please make sure that you've already updated metadata.yaml at the root of the repo. So, if you're using v1.2.0 then you'll also need to update the `releaseSeries` block in metadata.yaml. The tag used for releasing should be compatible with what we have defined in metadata.yaml
+
 Creating a new release of cluster-stack-operator covers the following steps: 
 
 ### Step 1: Create and Push a tag 
