@@ -306,7 +306,13 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// if a hook is specified, we cannot be ready yet
 		// if a hook is set, it is expected that HelmChartAppliedCondition is removed
 		if clusterAddon.Spec.Hook != "" {
-			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+			// if the clusterAddon was ready before, it means this hook is fresh and we have to reset the status
+			if clusterAddon.Status.Ready {
+				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+			}
+			if clusterAddon.Status.HelmChartStatus == nil {
+				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+			}
 			clusterAddon.Status.Ready = false
 		}
 
