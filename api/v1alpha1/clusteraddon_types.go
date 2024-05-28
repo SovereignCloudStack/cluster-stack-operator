@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusteraddon"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -27,16 +28,32 @@ const (
 	ClusterAddonFinalizer = "clusteraddon.clusterstack.x-k8s.io"
 )
 
-// HelmChartStatusConditions defines the status of helm chart in the cluster addon.
-type HelmChartStatusConditions string
+// StagePhase defines the status of helm chart in the cluster addon.
+type StagePhase string
 
 var (
-	None                    = HelmChartStatusConditions("")
-	WaitingForPreCondition  = HelmChartStatusConditions("waitingForPreCondition")
-	ApplyingOrDeleting      = HelmChartStatusConditions("applyingOrDeleting")
-	WaitingForPostCondition = HelmChartStatusConditions("waitingForPostCondition")
-	Done                    = HelmChartStatusConditions("done")
+	None                    = StagePhase("")
+	Pending                 = StagePhase("Pending")
+	WaitingForPreCondition  = StagePhase("waitingForPreCondition")
+	ApplyingOrDeleting      = StagePhase("applyingOrDeleting")
+	WaitingForPostCondition = StagePhase("waitingForPostCondition")
+	Done                    = StagePhase("done")
 )
+
+// StageStatus represents the helm charts of the hook and it's phases.
+type StageStatus struct {
+	// Name represent name of the helm chart
+	// +optional
+	Name string `json:"helmChartName"`
+
+	// Action is the action of the helm chart. e.g. - apply and delete.
+	// +optional
+	Action clusteraddon.Action `json:"action,omitempty"`
+
+	// Phase is the current phase of the helm chart.
+	// +optional
+	Phase StagePhase `json:"phase"`
+}
 
 // ClusterAddonSpec defines the desired state of a ClusterAddon object.
 type ClusterAddonSpec struct {
@@ -64,9 +81,9 @@ type ClusterAddonStatus struct {
 	// +optional
 	Resources []*Resource `json:"resources,omitempty"`
 
-	// HelmChartStatus defines the status of helm chart in the cluster addon.
+	// Stages shows the state of all stages in the current running hook.
 	// +optional
-	HelmChartStatus map[string]HelmChartStatusConditions `json:"helmChartStatus,omitempty"`
+	Stages []StageStatus `json:"stages,omitempty"`
 
 	// +optional
 	// +kubebuilder:default:=false
@@ -93,6 +110,27 @@ type ClusterAddon struct {
 
 	Spec   ClusterAddonSpec   `json:"spec,omitempty"`
 	Status ClusterAddonStatus `json:"status,omitempty"`
+}
+
+// GetStagePhase returns helm chart status for the helm chart.
+func (r *ClusterAddon) GetStagePhase(helmChartName string, action clusteraddon.Action) StagePhase {
+	for _, stage := range r.Status.Stages {
+		if stage.Name == helmChartName && stage.Action == action {
+			return stage.Phase
+		}
+	}
+
+	// This cannot occur as we populate phase value with "pending".
+	return None
+}
+
+// SetStagePhase sets the helm chart status phase.
+func (r *ClusterAddon) SetStagePhase(helmChartName string, action clusteraddon.Action, phase StagePhase) {
+	for i, _ := range r.Status.Stages {
+		if r.Status.Stages[i].Name == helmChartName && r.Status.Stages[i].Action == action {
+			r.Status.Stages[i].Phase = phase
+		}
+	}
 }
 
 // GetConditions returns the observations of the operational state of the ClusterAddon resource.
