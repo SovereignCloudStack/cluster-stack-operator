@@ -280,6 +280,12 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
 		}
 
+		// clusteraddon.yaml in the release.
+		clusterAddonConfig, err := clusteraddon.ParseClusterAddonConfig(in.clusterAddonConfigPath)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to parse clusteraddon.yaml config: %w", err)
+		}
+
 		var (
 			oldRelease release.Release
 			requeue    bool
@@ -307,11 +313,13 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// if a hook is set, it is expected that HelmChartAppliedCondition is removed
 		if clusterAddon.Spec.Hook != "" {
 			// if the clusterAddon was ready before, it means this hook is fresh and we have to reset the status
-			if clusterAddon.Status.Ready {
-				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
-			}
-			if clusterAddon.Status.HelmChartStatus == nil {
-				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+			if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
+				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook]))
+				for i, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
+					clusterAddon.Status.Stages[i].Name = stage.HelmChartName
+					clusterAddon.Status.Stages[i].Action = stage.Action
+					clusterAddon.Status.Stages[i].Phase = csov1alpha1.Pending
+				}
 			}
 			clusterAddon.Status.Ready = false
 		}
@@ -320,7 +328,14 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// Therefore, we have to check whether the ClusterStack is upgraded and if that is the case, the ClusterAddons have to be upgraded as well.
 		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 			if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
-				clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+				if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
+					clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages["BeforeClusterUpgrade"]))
+					for i, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
+						clusterAddon.Status.Stages[i].Name = stage.HelmChartName
+						clusterAddon.Status.Stages[i].Action = stage.Action
+						clusterAddon.Status.Stages[i].Phase = csov1alpha1.Pending
+					}
+				}
 				clusterAddon.Status.Ready = false
 				conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			} else {
@@ -334,12 +349,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		if clusterAddon.Status.Ready {
 			return reconcile.Result{}, nil
-		}
-
-		// clusteraddon.yaml in the release.
-		clusterAddonConfig, err := clusteraddon.ParseClusterAddonConfig(in.clusterAddonConfigPath)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to parse clusteraddon.yaml config: %w", err)
 		}
 
 		// In case the Kubernetes version stayed the same during an upgrade, the hook server does not trigger and
@@ -363,7 +372,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 			// remove the helm chart status from the status.
-			clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+			clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
 
 			// update the latest cluster class
 			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
@@ -397,7 +406,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
 		// remove the helm chart status from the status.
-		clusterAddon.Status.HelmChartStatus = make(map[string]csov1alpha1.HelmChartStatusConditions)
+		clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
 
 		// remove the status resource if hook is finished
 		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
@@ -534,8 +543,8 @@ func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage cluster
 	}
 
 check:
-	switch in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] {
-	case csov1alpha1.None, csov1alpha1.WaitingForPreCondition:
+	switch in.clusterAddon.GetStagePhase(stage.HelmChartName, stage.Action) {
+	case csov1alpha1.Pending, csov1alpha1.WaitingForPreCondition:
 		// If WaitForPreCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPreCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
@@ -550,7 +559,7 @@ check:
 						"failed to successfully evaluate pre condition: %q: %s", stage.HelmChartName, err.Error(),
 					)
 
-					in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPreCondition
+					in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.WaitingForPreCondition)
 
 					return true, nil
 				}
@@ -558,7 +567,8 @@ check:
 			}
 			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 		}
-		in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.ApplyingOrDeleting
+
+		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.ApplyingOrDeleting)
 		goto check
 
 	case csov1alpha1.ApplyingOrDeleting:
@@ -584,7 +594,7 @@ check:
 			// remove status resource if applied successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
+			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.WaitingForPostCondition)
 			goto check
 
 		} else {
@@ -610,7 +620,7 @@ check:
 			// remove status resource if deleted successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-			in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.WaitingForPostCondition
+			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.WaitingForPostCondition)
 			goto check
 		}
 
@@ -636,7 +646,7 @@ check:
 			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 		}
 
-		in.clusterAddon.Status.HelmChartStatus[stage.HelmChartName] = csov1alpha1.Done
+		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.Done)
 	}
 
 	return false, nil
