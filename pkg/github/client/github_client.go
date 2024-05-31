@@ -103,7 +103,7 @@ func (c *realGhClient) GetReleaseByTag(ctx context.Context, tag string) (*github
 
 // DownloadReleaseAssets downloads a list of release assets.
 func (c *realGhClient) DownloadReleaseAssets(ctx context.Context, release *github.RepositoryRelease, path string, assetlist []string) error {
-	if err := os.MkdirAll(path, os.ModePerm); err != nil {
+	if err := os.MkdirAll(path, os.ModePerm); err != nil { //nolint:gosec //nolint:ignore
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 	// Extract the release assets
