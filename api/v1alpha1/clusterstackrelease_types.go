@@ -62,6 +62,7 @@ type ClusterStackReleaseStatus struct {
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of ClusterStackRelease"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason"
 // +kubebuilder:printcolumn:name="Message",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].message"
+// +kubebuilder:resource:shortName=cskr
 
 // ClusterStackRelease is the Schema for the clusterstackreleases API.
 type ClusterStackRelease struct {
