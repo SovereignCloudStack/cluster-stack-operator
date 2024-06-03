@@ -9,8 +9,6 @@ addonStages:
   BeforeClusterUpgrade:
     - helmChartName: metrics-server
       action: apply
-    - helmChartName: metrics-server
-      action: delete
     - helmChartName: ngnix
       action: apply
       waitForPostCondition:

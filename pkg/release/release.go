@@ -52,7 +52,9 @@ const (
 	ClusterAddonYamlName = "clusteraddon.yaml"
 
 	metadataFileName       = "metadata.yaml"
-	clusterAddonValuesName = "cluster-addon-values.yaml"
+
+	// cluster-addon-values.yaml
+	ClusterAddonValuesName = "cluster-addon-values.yaml"
 
 	// OverwriteYaml is the new cluster stack overwrite yaml.
 	OverwriteYaml = "overwrite.yaml"
@@ -139,7 +141,7 @@ func (r *Release) CheckHelmCharts() error {
 		}
 
 		// check if the cluster addon values file is present.
-		valuesPath := filepath.Join(r.LocalDownloadPath, clusterAddonValuesName)
+		valuesPath := filepath.Join(r.LocalDownloadPath, ClusterAddonValuesName)
 		if _, err := os.Stat(valuesPath); err != nil {
 			return fmt.Errorf("failed to verify the cluster addon values path %s with error: %w", valuesPath, err)
 		}
@@ -204,7 +206,7 @@ func (r *Release) ClusterAddonChartPath() string {
 
 // ClusterAddonValuesPath returns the path to the cluster addon values file.
 func (r *Release) ClusterAddonValuesPath() string {
-	return filepath.Join(r.LocalDownloadPath, clusterAddonValuesName)
+	return filepath.Join(r.LocalDownloadPath, ClusterAddonValuesName)
 }
 
 // clusterClassChartName returns the helm chart name for cluster class.
