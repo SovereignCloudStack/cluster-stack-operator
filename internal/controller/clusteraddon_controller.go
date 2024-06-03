@@ -212,8 +212,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		return reconcile.Result{}, fmt.Errorf("failed to get cluster addon config path: %w", err)
 	}
 
-	logger := log.FromContext(ctx)
-
 	// Check whether current Helm chart has been applied in the workload cluster. If not, then we need to apply the helm chart (again).
 	// the spec.clusterStack is only set after a Helm chart from a ClusterStack has been applied successfully.
 	// If it is not set, the Helm chart has never been applied.
@@ -372,6 +370,28 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				}
 			}
 
+			// create the list of old release objects
+			oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
+			}
+
+			newClusterStackObjectList, err := r.getNewReleaseObjects(ctx, in, clusterAddonConfig)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to get new cluster stack object list from helm charts: %w", err)
+			}
+
+			shouldRequeue, err := r.cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to clean up resources: %w", err)
+			}
+			if shouldRequeue {
+				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+			}
+
+			// set upgrade annotation once done
+			clusterAddon.SetStageAnnotations(csov1alpha1.StageUpgraded)
+
 			// Helm chart has been applied successfully
 			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
@@ -404,8 +424,6 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 		}
 
-		logger.Info("the hook is here", "hook", in.clusterAddon.Spec.Hook)
-
 		if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
 			if clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
 				// create the list of old release objects
@@ -413,20 +431,17 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				if err != nil {
 					return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
 				}
-				logger.Info("here is the old cluster stack object list", "list", oldClusterStackObjectList)
 
 				newClusterStackObjectList, err := r.getNewReleaseObjects(ctx, in, clusterAddonConfig)
 				if err != nil {
 					return reconcile.Result{}, fmt.Errorf("failed to get new cluster stack object list from helm charts: %w", err)
 				}
 
-				logger.Info("here in the clean up begins", "currentList", newClusterStackObjectList)
-				shouldReque, err := r.cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
-				logger.Info("here in the clean up done", "currentList", newClusterStackObjectList, "reque", shouldReque)
+				shouldRequeue, err := r.cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
 				if err != nil {
 					return reconcile.Result{}, fmt.Errorf("failed to clean up resources: %w", err)
 				}
-				if shouldReque {
+				if shouldRequeue {
 					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 				}
 
