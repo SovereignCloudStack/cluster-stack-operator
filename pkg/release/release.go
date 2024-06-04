@@ -52,9 +52,9 @@ const (
 	// ClusterAddonYamlName is the file name where clusteraddon config is there.
 	ClusterAddonYamlName = "clusteraddon.yaml"
 
-	metadataFileName       = "metadata.yaml"
+	metadataFileName = "metadata.yaml"
 
-	// cluster-addon-values.yaml
+	// ClusterAddonValuesName constant for the file cluster-addon-values.yaml.
 	ClusterAddonValuesName = "cluster-addon-values.yaml"
 
 	// OverwriteYaml is the new cluster stack overwrite yaml.

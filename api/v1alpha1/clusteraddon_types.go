@@ -28,25 +28,35 @@ const (
 	ClusterAddonFinalizer = "clusteraddon.clusterstack.x-k8s.io"
 )
 
+// StageAnnotation is the annotation name and key for the stage annotation.
 const StageAnnotation = "ClusterAddonStage"
 
+// StageAnnotationValue is the value of the stage annotation.
 type StageAnnotationValue string
 
 const (
-	StageCreated  = StageAnnotationValue("created")
-	StageUpgraded = StageAnnotationValue("upgraded")
+	// StageAnnotationValueCreated signifies the stage annotation created.
+	StageAnnotationValueCreated = StageAnnotationValue("created")
+	// StageAnnotationValueUpgraded signifies the stage annotation upgraded.
+	StageAnnotationValueUpgraded = StageAnnotationValue("upgraded")
 )
 
 // StagePhase defines the status of helm chart in the cluster addon.
 type StagePhase string
 
 var (
-	None                    = StagePhase("")
-	Pending                 = StagePhase("Pending")
-	WaitingForPreCondition  = StagePhase("waitingForPreCondition")
-	ApplyingOrDeleting      = StagePhase("applyingOrDeleting")
-	WaitingForPostCondition = StagePhase("waitingForPostCondition")
-	Done                    = StagePhase("done")
+	// StagePhaseNone signifies the empty stage phase.
+	StagePhaseNone = StagePhase("")
+	// StagePhasePending signifies the stage phase 'pending'.
+	StagePhasePending = StagePhase("Pending")
+	// StagePhaseWaitingForPreCondition signifies the stage phase 'waitingForPreCondition'.
+	StagePhaseWaitingForPreCondition = StagePhase("waitingForPreCondition")
+	// StagePhaseApplyingOrDeleting signifies the stage phase 'applyingOrDeleting'.
+	StagePhaseApplyingOrDeleting = StagePhase("applyingOrDeleting")
+	// StagePhaseWaitingForPostCondition signifies the stage phase 'waitingForPostCondition'.
+	StagePhaseWaitingForPostCondition = StagePhase("waitingForPostCondition")
+	// StagePhaseDone signifies the stage phase 'done'.
+	StagePhaseDone = StagePhase("done")
 )
 
 // StageStatus represents the helm charts of the hook and it's phases.
@@ -131,18 +141,19 @@ func (r *ClusterAddon) GetStagePhase(helmChartName string, action clusteraddon.A
 	}
 
 	// This cannot occur as we populate phase value with "pending".
-	return None
+	return StagePhaseNone
 }
 
 // SetStagePhase sets the helm chart status phase.
 func (r *ClusterAddon) SetStagePhase(helmChartName string, action clusteraddon.Action, phase StagePhase) {
-	for i, _ := range r.Status.Stages {
+	for i := range r.Status.Stages {
 		if r.Status.Stages[i].Name == helmChartName && r.Status.Stages[i].Action == action {
 			r.Status.Stages[i].Phase = phase
 		}
 	}
 }
 
+// SetStageAnnotations sets the annotation whether the cluster got created or upgraded.
 func (r *ClusterAddon) SetStageAnnotations(value StageAnnotationValue) {
 	if r.Annotations == nil {
 		r.Annotations = make(map[string]string, 0)
@@ -153,7 +164,7 @@ func (r *ClusterAddon) SetStageAnnotations(value StageAnnotationValue) {
 	}
 }
 
-// HasAnnotation returns a bool if passed in annotation exists.
+// HasStageAnnotation returns whether the stage annotation exists with a certain value.
 func (r *ClusterAddon) HasStageAnnotation(value StageAnnotationValue) bool {
 	val, found := r.Annotations[StageAnnotation]
 	if found && val == string(value) {

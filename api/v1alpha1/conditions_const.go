@@ -60,7 +60,7 @@ const (
 	// HelmChartDeletedCondition reports on whether the relevant helm chart has been applied.
 	HelmChartDeletedCondition clusterv1.ConditionType = "HelmChartDeleted"
 
-	// FailedToApplyObjectsReason is used when some objects have been failed to delete.
+	// FailedToDeleteObjectsReason is used when some objects have been failed to delete.
 	FailedToDeleteObjectsReason = "FailedToDeleteObjects"
 )
 

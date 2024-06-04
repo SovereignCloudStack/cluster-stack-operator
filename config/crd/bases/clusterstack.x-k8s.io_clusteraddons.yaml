@@ -216,6 +216,7 @@ spec:
                     action:
                       description: Action is the action of the helm chart. e.g. -
                         apply and delete.
+                      type: string
                     helmChartName:
                       description: Name represent name of the helm chart
                       type: string

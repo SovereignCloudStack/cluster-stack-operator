@@ -29,3 +29,6 @@ ignore:
   - config/webhook/**/*.yaml
   - test/releases/**
   - test/cluster-stacks/**
+  - .release/**
+  - .cluster.yaml
+  - .clusterstack.yaml

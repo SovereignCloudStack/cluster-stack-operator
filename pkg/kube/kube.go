@@ -244,7 +244,7 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 	return newResources, shouldRequeue, nil
 }
 
-func (k *kube) Delete(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
+func (k *kube) Delete(_ context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
 	clientset, err := kubernetes.NewForConfig(k.RestConfig)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to create clientset: %w", err)

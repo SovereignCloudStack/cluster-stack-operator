@@ -26,7 +26,7 @@ import (
 
 	//+kubebuilder:scaffold:imports
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
-	"github.com/SovereignCloudStack/cluster-stack-operator/extension/handlers"
+	"github.com/SovereignCloudStack/cluster-stack-operator/extension"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/controller"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/fake"
@@ -237,7 +237,7 @@ func main() {
 	restConfig.UserAgent = remote.DefaultClusterAPIUserAgent("cluster-stack-operator-extension-manager")
 
 	// Create the ExtensionHandlers for the lifecycle hooks
-	lifecycleExtensionHandlers := handlers.NewExtensionHandlers(mgr.GetClient(), scheme)
+	lifecycleExtensionHandlers := extension.NewHandler(mgr.GetClient())
 
 	setupLog.Info("Add extension handlers")
 	if err := hookServer.AddExtensionHandler(server.ExtensionHandler{
