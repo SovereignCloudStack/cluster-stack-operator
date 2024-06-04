@@ -242,7 +242,7 @@ func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Cont
 	}
 
 	// unexpected error
-	if err != nil && !apierrors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get ClusterStackRelease: %w", err)
 	}
 

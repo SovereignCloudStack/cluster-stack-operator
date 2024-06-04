@@ -70,13 +70,14 @@ const (
 	ObjectLabelValueOwned = "owned"
 )
 
+// GetResourcesFromHelmTemplate returns a slice of resources based on the outcome of a slice of bytes from helm template.
 func GetResourcesFromHelmTemplate(template []byte) ([]*csov1alpha1.Resource, error) {
 	objects, err := parseK8sYaml(template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get resources from template: %w", err)
 	}
 
-	var resources []*csov1alpha1.Resource
+	resources := make([]*csov1alpha1.Resource, 0, len(objects))
 	for _, obj := range objects {
 		resources = append(resources, csov1alpha1.NewResourceFromUnstructured(obj))
 	}
@@ -126,16 +127,6 @@ func getResourceMap(resources []*csov1alpha1.Resource) map[types.NamespacedName]
 		resourceMap[types.NamespacedName{Name: resource.Name, Namespace: resource.Namespace}] = resources[i]
 	}
 	return resourceMap
-}
-
-func getResourceMapOfUnstructuredObjects(objects []*unstructured.Unstructured) map[types.NamespacedName]*unstructured.Unstructured {
-	objectMap := make(map[types.NamespacedName]*unstructured.Unstructured)
-
-	for i, object := range objects {
-		objectMap[types.NamespacedName{Name: object.GetName(), Namespace: object.GetNamespace()}] = objects[i]
-	}
-
-	return objectMap
 }
 
 func setLabel(target *unstructured.Unstructured, key, val string) error {
@@ -202,6 +193,7 @@ func setLabel(target *unstructured.Unstructured, key, val string) error {
 	return nil
 }
 
+// GetDynamicResourceInterface returns a dynamic.ResourceInterface based on the groupVersionKind and namespace.
 func GetDynamicResourceInterface(namespace string, restConfig *rest.Config, group schema.GroupVersionKind) (dynamic.ResourceInterface, error) {
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {

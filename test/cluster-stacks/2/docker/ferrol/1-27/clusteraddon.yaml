@@ -7,6 +7,8 @@ addonStages:
     - helmChartName: metrics-server
       action: apply
   BeforeClusterUpgrade:
+      - helmChartName: cni
+      action: apply
     - helmChartName: metrics-server
       action: apply
     - helmChartName: ngnix

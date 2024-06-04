@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package cluster addon contains function for cluster addon config operations.
+// Package clusteraddon contains function for cluster addon config operations.
 package clusteraddon
 
 import (
@@ -29,8 +29,8 @@ import (
 // Action is the type for helm chart action (e.g. - apply, delete).
 type Action string
 
-// ConditionNotMatchError is used when the specified CEL expression doesn't match in the stage.
-var ConditionNotMatchError = errors.New("condition don't match")
+// ErrConditionNotMatch is used when the specified CEL expression doesn't match in the stage.
+var ErrConditionNotMatch = errors.New("condition don't match")
 
 var (
 	// Apply applies a helm chart.
@@ -40,6 +40,7 @@ var (
 	Delete = Action("delete")
 )
 
+// Object is a representation of a Kubernetes object plus a key for evaluating CEL expressions with that object.
 type Object struct {
 	Key        string `yaml:"key"`
 	APIVersion string `yaml:"apiVersion"`
@@ -48,11 +49,13 @@ type Object struct {
 	Namespace  string `yaml:"namespace"`
 }
 
+// WaitForCondition contains objects and conditions to use in CEL expressions.
 type WaitForCondition struct {
 	Objects    []Object `yaml:"objects"`
 	Conditions string   `yaml:"conditions"`
 }
 
+// Stage is a stage of a hook in which a certain Helm chart is applied and pre- and post-conditions are evaluated if they exist.
 type Stage struct {
 	HelmChartName        string           `yaml:"helmChartName"`
 	Action               Action           `yaml:"action"`
@@ -60,21 +63,23 @@ type Stage struct {
 	WaitForPostCondition WaitForCondition `yaml:"waitForPostCondition,omitempty"`
 }
 
-type ClusterAddonConfig struct {
-	APIVersion          string             `yaml:"apiVersion"`
-	ClusterAddonVersion string             `yaml:"clusterAddonVersion"`
-	AddonStages         map[string][]Stage `yaml:"addonStages"`
+// Config is a configuration for multi-stage cluster addons.
+type Config struct {
+	APIVersion          string              `yaml:"apiVersion"`
+	ClusterAddonVersion string              `yaml:"clusterAddonVersion"`
+	AddonStages         map[string][]*Stage `yaml:"addonStages"`
 }
 
-func ParseClusterAddonConfig(path string) (ClusterAddonConfig, error) {
+// ParseConfig parses a file whose path is given and returns a config struct.
+func ParseConfig(path string) (Config, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return ClusterAddonConfig{}, fmt.Errorf("failed to read file: %q: %w", path, err)
+		return Config{}, fmt.Errorf("failed to read file: %q: %w", path, err)
 	}
 
-	var clusterAddon ClusterAddonConfig
+	var clusterAddon Config
 	if err := yaml.Unmarshal(data, &clusterAddon); err != nil {
-		return ClusterAddonConfig{}, fmt.Errorf("failed to parse cluster addon yaml: %w", err)
+		return Config{}, fmt.Errorf("failed to parse cluster addon yaml: %w", err)
 	}
 
 	return clusterAddon, nil

@@ -42,7 +42,7 @@ import (
 	sprig "github.com/go-task/slim-sprig"
 	"github.com/google/cel-go/cel"
 	celtypes "github.com/google/cel-go/common/types"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -199,7 +199,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// set downloaded condition if able to read metadata file
 	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
 
-	in := templateAndApplyClusterAddonInput{
+	in := &templateAndApplyClusterAddonInput{
 		clusterAddonChartPath:  releaseAsset.ClusterAddonChartPath(),
 		clusterAddonValuesPath: releaseAsset.ClusterAddonValuesPath(),
 		clusterAddon:           clusterAddon,
@@ -250,7 +250,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			}
 
-			clusterAddon.SetStageAnnotations(csov1alpha1.StageCreated)
+			clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueCreated)
 			clusterAddon.Spec.Hook = ""
 			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 			clusterAddon.Status.Ready = true
@@ -275,101 +275,158 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		}
 
 		clusterAddon.Spec.Hook = ""
-		clusterAddon.SetStageAnnotations(csov1alpha1.StageCreated)
+		clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueCreated)
 		clusterAddon.Status.Ready = true
 		return ctrl.Result{}, nil
+	}
 
-	} else {
-		in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
+	// multi-stage cluster addon flow
+	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+	}
+
+	// clusteraddon.yaml in the release.
+	clusterAddonConfig, err := clusteraddon.ParseConfig(in.clusterAddonConfigPath)
+	if err != nil {
+		return reconcile.Result{}, fmt.Errorf("failed to parse clusteraddon.yaml config: %w", err)
+	}
+
+	var (
+		oldRelease *release.Release
+		requeue    bool
+	)
+
+	if clusterAddon.Spec.ClusterStack != "" {
+		oldRelease, requeue, err = r.downloadOldClusterStackRelease(ctx, clusterAddon)
 		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+			return reconcile.Result{}, fmt.Errorf("failed to download old cluster stack releases: %w", err)
+		}
+		if requeue {
+			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 
-		// clusteraddon.yaml in the release.
-		clusterAddonConfig, err := clusteraddon.ParseClusterAddonConfig(in.clusterAddonConfigPath)
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to parse clusteraddon.yaml config: %w", err)
+		// src - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1.tgz
+		// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
+		in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldRelease.ClusterAddonChartPath(), ".tgz")
+
+		if err := unTarContent(oldRelease.ClusterAddonChartPath(), in.oldDestinationClusterAddonChartDir); err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to untar old cluster stack cluster addon chart: %q: %w", oldRelease.ClusterAddonChartPath(), err)
 		}
+	}
 
-		var (
-			oldRelease release.Release
-			requeue    bool
-		)
-
-		if clusterAddon.Spec.ClusterStack != "" {
-			oldRelease, requeue, err = r.downloadOldClusterStackRelease(ctx, clusterAddon)
-			if err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed to download old cluster stack releases: %w", err)
-			}
-			if requeue {
-				return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-			}
-
-			// src - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1.tgz
-			// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
-			in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldRelease.ClusterAddonChartPath(), ".tgz")
-
-			if err := unTarContent(oldRelease.ClusterAddonChartPath(), in.oldDestinationClusterAddonChartDir); err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed to untar old cluster stack cluster addon chart: %q: %w", oldRelease.ClusterAddonChartPath(), err)
+	// if a hook is specified, we cannot be ready yet
+	// if a hook is set, it is expected that HelmChartAppliedCondition is removed
+	if clusterAddon.Spec.Hook != "" {
+		// if the clusterAddon was ready before, it means this hook is fresh and we have to reset the status
+		if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
+			clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook]))
+			for i, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
+				clusterAddon.Status.Stages[i].Name = stage.HelmChartName
+				clusterAddon.Status.Stages[i].Action = stage.Action
+				clusterAddon.Status.Stages[i].Phase = csov1alpha1.StagePhasePending
 			}
 		}
+		clusterAddon.Status.Ready = false
+	}
 
-		// if a hook is specified, we cannot be ready yet
-		// if a hook is set, it is expected that HelmChartAppliedCondition is removed
-		if clusterAddon.Spec.Hook != "" {
-			// if the clusterAddon was ready before, it means this hook is fresh and we have to reset the status
+	// In case the Kubernetes version stays the same, the hook server does not trigger.
+	// Therefore, we have to check whether the ClusterStack is upgraded and if that is the case, the ClusterAddons have to be upgraded as well.
+	if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
+		if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
 			if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
-				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook]))
-				for i, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
+				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages["BeforeClusterUpgrade"]))
+				for i, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
 					clusterAddon.Status.Stages[i].Name = stage.HelmChartName
 					clusterAddon.Status.Stages[i].Action = stage.Action
-					clusterAddon.Status.Stages[i].Phase = csov1alpha1.Pending
+					clusterAddon.Status.Stages[i].Phase = csov1alpha1.StagePhasePending
 				}
 			}
 			clusterAddon.Status.Ready = false
+			conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+		} else {
+			// If the cluster addon version don't change we don't want to apply helm charts again.
+			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+			clusterAddon.Status.Ready = true
 		}
+	}
 
-		// In case the Kubernetes version stays the same, the hook server does not trigger.
-		// Therefore, we have to check whether the ClusterStack is upgraded and if that is the case, the ClusterAddons have to be upgraded as well.
-		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
-			if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
-				if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
-					clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages["BeforeClusterUpgrade"]))
-					for i, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
-						clusterAddon.Status.Stages[i].Name = stage.HelmChartName
-						clusterAddon.Status.Stages[i].Action = stage.Action
-						clusterAddon.Status.Stages[i].Phase = csov1alpha1.Pending
-					}
-				}
-				clusterAddon.Status.Ready = false
-				conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
-			} else {
-				// If the cluster addon version don't change we don't want to apply helm charts again.
-				clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
-				clusterAddon.Status.Ready = true
+	clusterAddon.Spec.Version = releaseAsset.Meta.Versions.Components.ClusterAddon
+
+	if clusterAddon.Status.Ready {
+		return reconcile.Result{}, nil
+	}
+
+	// In case the Kubernetes version stayed the same during an upgrade, the hook server does not trigger and
+	// we just take the Helm charts that are supposed to be installed in the BeforeClusterUpgrade hook and apply them.
+	if oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
+		clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
+		for _, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
+			shouldRequeue, err := r.executeStage(ctx, stage, in)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
+			}
+			if shouldRequeue {
+				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 			}
 		}
 
-		clusterAddon.Spec.Version = releaseAsset.Meta.Versions.Components.ClusterAddon
-
-		if clusterAddon.Status.Ready {
-			return reconcile.Result{}, nil
+		// create the list of old release objects
+		oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
 		}
 
-		// In case the Kubernetes version stayed the same during an upgrade, the hook server does not trigger and
-		// we just take the Helm charts that are supposed to be installed in the BeforeClusterUpgrade hook and apply them.
-		if oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
-			clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
-			for _, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
-				shouldRequeue, err := r.executeStage(ctx, stage, in)
-				if err != nil {
-					return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
-				}
-				if shouldRequeue {
-					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-				}
-			}
+		newClusterStackObjectList, err := r.getNewReleaseObjects(ctx, in, clusterAddonConfig)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to get new cluster stack object list from helm charts: %w", err)
+		}
 
+		shouldRequeue, err := cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to clean up resources: %w", err)
+		}
+		if shouldRequeue {
+			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+		}
+
+		// set upgrade annotation once done
+		clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueUpgraded)
+
+		// Helm chart has been applied successfully
+		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+
+		// remove the status resource if hook is finished
+		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+
+		// remove the helm chart status from the status.
+		clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
+
+		// update the latest cluster class
+		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+		clusterAddon.Status.Ready = true
+
+		return ctrl.Result{}, nil
+	}
+
+	// If hook is empty we can don't want to proceed executing staged according to current hook
+	// hence we can return.
+	if clusterAddon.Spec.Hook == "" {
+		return reconcile.Result{}, nil
+	}
+
+	for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
+		shouldRequeue, err := r.executeStage(ctx, stage, in)
+		if err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to execute stage: %q: %w", stage.HelmChartName, err)
+		}
+		if shouldRequeue {
+			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
+		}
+	}
+
+	if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
+		if clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
 			// create the list of old release objects
 			oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
 			if err != nil {
@@ -381,7 +438,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				return reconcile.Result{}, fmt.Errorf("failed to get new cluster stack object list from helm charts: %w", err)
 			}
 
-			shouldRequeue, err := r.cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
+			shouldRequeue, err := cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed to clean up resources: %w", err)
 			}
@@ -390,90 +447,33 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			}
 
 			// set upgrade annotation once done
-			clusterAddon.SetStageAnnotations(csov1alpha1.StageUpgraded)
-
-			// Helm chart has been applied successfully
-			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
-
-			// remove the status resource if hook is finished
-			clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
-
-			// remove the helm chart status from the status.
-			clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
-
-			// update the latest cluster class
-			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
-			clusterAddon.Status.Ready = true
-
-			return ctrl.Result{}, nil
+			clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueUpgraded)
 		}
 
-		// If hook is empty we can don't want to proceed executing staged according to current hook
-		// hence we can return.
-		if clusterAddon.Spec.Hook == "" {
-			return reconcile.Result{}, nil
-		}
+		// if upgrade annotation is not present add the create annotation
+		clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueCreated)
 
-		for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
-			shouldRequeue, err := r.executeStage(ctx, stage, in)
-			if err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %q: %w", stage.HelmChartName, err)
-			}
-			if shouldRequeue {
-				return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-			}
-		}
-
-		if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
-			if clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
-				// create the list of old release objects
-				oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
-				if err != nil {
-					return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
-				}
-
-				newClusterStackObjectList, err := r.getNewReleaseObjects(ctx, in, clusterAddonConfig)
-				if err != nil {
-					return reconcile.Result{}, fmt.Errorf("failed to get new cluster stack object list from helm charts: %w", err)
-				}
-
-				shouldRequeue, err := r.cleanUpResources(ctx, in, oldClusterStackObjectList, newClusterStackObjectList)
-				if err != nil {
-					return reconcile.Result{}, fmt.Errorf("failed to clean up resources: %w", err)
-				}
-				if shouldRequeue {
-					return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
-				}
-
-				// set upgrade annotation once done
-				clusterAddon.SetStageAnnotations(csov1alpha1.StageUpgraded)
-			}
-
-			// if upgrade annotation is not present add the create annotation
-			clusterAddon.SetStageAnnotations(csov1alpha1.StageCreated)
-
-			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
-		}
-
-		// Helm chart has been applied successfully
-		// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
-		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
-
-		// remove the helm chart status from the status.
-		clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
-
-		// remove the status resource if hook is finished
-		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
-
-		// unset spec hook and make cluster addon ready
-		clusterAddon.Spec.Hook = ""
-		clusterAddon.Status.Ready = true
+		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 	}
+
+	// Helm chart has been applied successfully
+	// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
+	conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+
+	// remove the helm chart status from the status.
+	clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
+
+	// remove the status resource if hook is finished
+	clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+
+	// unset spec hook and make cluster addon ready
+	clusterAddon.Spec.Hook = ""
+	clusterAddon.Status.Ready = true
 
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.ClusterAddonConfig) ([]*csov1alpha1.Resource, error) {
+func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in *templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.Config) ([]*csov1alpha1.Resource, error) {
 	var (
 		newBuildTemplate []byte
 		resources        []*csov1alpha1.Resource
@@ -481,7 +481,7 @@ func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in te
 
 	for _, stage := range clusterAddonConfig.AddonStages[in.clusterAddon.Spec.Hook] {
 		if _, err := os.Stat(filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml)); err == nil {
-			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client, true)
+			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build template from new cluster addon values of the latest cluster stack: %w", err)
 			}
@@ -508,7 +508,7 @@ func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in te
 }
 
 // getOldReleaseObjects returns the old cluster stack objects in the workload cluster.
-func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.ClusterAddonConfig, oldRelease release.Release) ([]*csov1alpha1.Resource, error) {
+func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.Config, oldRelease *release.Release) ([]*csov1alpha1.Resource, error) {
 	// clusteraddon.yaml
 	clusterAddonConfigPath, err := r.getClusterAddonConfigPath(in.clusterAddon.Spec.ClusterStack)
 	if err != nil {
@@ -521,7 +521,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in te
 		}
 
 		// this is the old way
-		buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, oldRelease.ClusterAddonValuesPath(), in.cluster, r.Client, false)
+		buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, oldRelease.ClusterAddonValuesPath(), in.cluster, r.Client)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build template from the old cluster stack cluster addon values: %w", err)
 		}
@@ -549,7 +549,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in te
 		hook string
 	)
 
-	if in.clusterAddon.HasStageAnnotation(csov1alpha1.StageCreated) {
+	if in.clusterAddon.HasStageAnnotation(csov1alpha1.StageAnnotationValueCreated) {
 		hook = "AfterControlPlaneInitialized"
 	} else {
 		hook = "BeforeClusterUpgrade"
@@ -557,7 +557,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in te
 
 	for _, stage := range clusterAddonConfig.AddonStages[hook] {
 		if _, err := os.Stat(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml)); err == nil {
-			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client, true)
+			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build template from new cluster addon values: %w", err)
 			}
@@ -583,23 +583,20 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in te
 	return resources, nil
 }
 
-func (r *ClusterAddonReconciler) cleanUpResources(ctx context.Context, in templateAndApplyClusterAddonInput, oldList, newList []*csov1alpha1.Resource) (shouldRequeue bool, err error) {
+func cleanUpResources(ctx context.Context, in *templateAndApplyClusterAddonInput, oldList, newList []*csov1alpha1.Resource) (shouldRequeue bool, err error) {
 	// Create a map of items in the new slice for faster lookup
-	newMap := make(map[*csov1alpha1.Resource]bool)
-	for _, item := range newList {
-		newMap[item] = true
+	newMap := make(map[csov1alpha1.Resource]bool)
+	for i := range newList {
+		newMap[*newList[i]] = true
 	}
 
 	// Find extra objects in the old slice
-	var extraResources []*csov1alpha1.Resource
-	for _, item := range oldList {
-		if !newMap[item] {
-			extraResources = append(extraResources, item)
+	var extraResources []csov1alpha1.Resource
+	for i, item := range oldList {
+		if !newMap[*item] {
+			extraResources = append(extraResources, *oldList[i])
 		}
 	}
-	logger := log.FromContext(ctx)
-
-	logger.Info("diff in resources", "diff", extraResources)
 
 	for _, resource := range extraResources {
 		if resource.Namespace == "" {
@@ -630,9 +627,9 @@ func (r *ClusterAddonReconciler) getClusterAddonConfigPath(clusterClassName stri
 		}
 
 		return "", nil
-	} else {
-		return clusterAddonConfigPath, nil
 	}
+
+	return clusterAddonConfigPath, nil
 }
 
 type templateAndApplyClusterAddonInput struct {
@@ -696,11 +693,11 @@ func (r *ClusterAddonReconciler) getAddonStagesInput(restConfig *rest.Config, cl
 	return addonStages, nil
 }
 
-func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx context.Context, in templateAndApplyClusterAddonInput, shouldDelete bool) (bool, error) {
+func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, shouldDelete bool) (bool, error) {
 	clusterAddonChart := in.clusterAddonChartPath
 	var shouldRequeue bool
 
-	buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client, false)
+	buildTemplate, err := buildTemplateFromClusterAddonValues(ctx, in.clusterAddonValuesPath, in.cluster, r.Client)
 	if err != nil {
 		return false, fmt.Errorf("failed to build template from cluster addon values: %w", err)
 	}
@@ -722,7 +719,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 	return shouldRequeue, nil
 }
 
-func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage clusteraddon.Stage, in templateAndApplyClusterAddonInput) (bool, error) {
+func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage *clusteraddon.Stage, in *templateAndApplyClusterAddonInput) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	var (
@@ -746,13 +743,13 @@ func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage cluster
 
 check:
 	switch in.clusterAddon.GetStagePhase(stage.HelmChartName, stage.Action) {
-	case csov1alpha1.Pending, csov1alpha1.WaitingForPreCondition:
+	case csov1alpha1.StagePhasePending, csov1alpha1.StagePhaseWaitingForPreCondition:
 		// If WaitForPreCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPreCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
 			logger.V(1).Info("starting to evaluate pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPreCondition); err != nil {
-				if errors.Is(err, clusteraddon.ConditionNotMatchError) {
+				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
 					conditions.MarkFalse(
 						in.clusterAddon,
 						csov1alpha1.EvaluatedCELCondition,
@@ -761,7 +758,7 @@ check:
 						"failed to successfully evaluate pre condition: %q: %s", stage.HelmChartName, err.Error(),
 					)
 
-					in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.WaitingForPreCondition)
+					in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
 
 					return true, nil
 				}
@@ -770,10 +767,10 @@ check:
 			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 		}
 
-		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.ApplyingOrDeleting)
+		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseApplyingOrDeleting)
 		goto check
 
-	case csov1alpha1.ApplyingOrDeleting:
+	case csov1alpha1.StagePhaseApplyingOrDeleting:
 		if stage.Action == clusteraddon.Apply {
 			logger.V(1).Info("starting to apply helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 			shouldRequeue, err = r.templateAndApplyNewClusterStackAddonHelmChart(ctx, in, stage.HelmChartName)
@@ -796,13 +793,12 @@ check:
 			// remove status resource if applied successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.WaitingForPostCondition)
+			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
 			goto check
-
 		} else {
 			// Delete part
 			logger.V(1).Info("starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = r.helmTemplateAndDeleteNewClusterStack(ctx, in, stage.HelmChartName)
+			shouldRequeue, err = helmTemplateAndDeleteNewClusterStack(ctx, in, stage.HelmChartName)
 			if err != nil {
 				return false, fmt.Errorf("failed to delete helm chart: %w", err)
 			}
@@ -822,17 +818,17 @@ check:
 			// remove status resource if deleted successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.WaitingForPostCondition)
+			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
 			goto check
 		}
 
-	case csov1alpha1.WaitingForPostCondition:
+	case csov1alpha1.StagePhaseWaitingForPostCondition:
 		// If WaitForPostCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPostCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
 			logger.V(1).Info("starting to evaluate post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPostCondition); err != nil {
-				if errors.Is(err, clusteraddon.ConditionNotMatchError) {
+				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
 					conditions.MarkFalse(
 						in.clusterAddon,
 						csov1alpha1.EvaluatedCELCondition,
@@ -848,14 +844,14 @@ check:
 			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
 		}
 
-		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.Done)
+		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseDone)
 	}
 
 	return false, nil
 }
 
 // downloadOldClusterStackRelease downloads the old cluster stack if not present and returns release clusterAddon chart path if requeue and error.
-func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Context, clusterAddon *csov1alpha1.ClusterAddon) (release.Release, bool, error) {
+func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Context, clusterAddon *csov1alpha1.ClusterAddon) (*release.Release, bool, error) {
 	// initiate github release.
 	gc, err := r.GitHubClientFactory.NewClient(ctx)
 	if err != nil {
@@ -870,9 +866,9 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 
 		// give the github client a second change
 		if isSet {
-			return release.Release{}, true, nil
+			return nil, true, nil
 		}
-		return release.Release{}, false, nil
+		return nil, false, nil
 	}
 
 	conditions.MarkTrue(clusterAddon, csov1alpha1.GitAPIAvailableCondition)
@@ -881,7 +877,7 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), r.ReleaseDirectory)
 	if err != nil {
 		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
-		return release.Release{}, true, nil
+		return nil, true, nil
 	}
 	if download {
 		// if download is true, it means that the release assets have not been downloaded yet
@@ -892,13 +888,13 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 		r.clusterStackRelDownloadDirectoryMutex.Lock()
 
 		if err := downloadReleaseAssets(ctx, release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), releaseAsset.LocalDownloadPath, gc); err != nil {
-			return release.Release{}, false, fmt.Errorf("failed to download release assets: %w", err)
+			return nil, false, fmt.Errorf("failed to download release assets: %w", err)
 		}
 
 		r.clusterStackRelDownloadDirectoryMutex.Unlock()
 
 		// requeue to make sure release assets can be accessed
-		return release.Release{}, true, nil
+		return nil, true, nil
 	}
 
 	if err := releaseAsset.CheckHelmCharts(); err != nil {
@@ -911,16 +907,16 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 			msg,
 		)
 		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
-		return release.Release{}, false, nil
+		return nil, false, nil
 	}
 
 	// set downloaded condition if able to read metadata file
 	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
 
-	return releaseAsset, false, nil
+	return &releaseAsset, false, nil
 }
 
-func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
 	var (
 		oldHelmTemplate  []byte
 		oldBuildTemplate []byte
@@ -933,7 +929,7 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 
 		// we skip helm templating if last cluster stack don't follow the new convention.
 		if _, err := os.Stat(filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
-			oldBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client, true)
+			oldBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
 				return false, fmt.Errorf("failed to build template from old cluster addon values: %w", err)
 			}
@@ -948,7 +944,7 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
 
 	if _, err := os.Stat(filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
-		newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client, true)
+		newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
 		if err != nil {
 			return false, fmt.Errorf("failed to build template from new cluster addon values: %w", err)
 		}
@@ -970,7 +966,7 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 	return shouldRequeue, nil
 }
 
-func (r *ClusterAddonReconciler) helmTemplateAndDeleteNewClusterStack(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in *templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
 	var (
 		buildTemplate []byte
 		err           error
@@ -991,40 +987,6 @@ func (r *ClusterAddonReconciler) helmTemplateAndDeleteNewClusterStack(ctx contex
 	in.clusterAddon.Status.Resources = deletedResources
 
 	return shouldRequeue, nil
-}
-
-func helmTemplateAndApply(ctx context.Context, kubeClient kube.Client, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte, shouldDelete bool) ([]*csov1alpha1.Resource, bool, error) {
-	subDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
-	loggger := log.FromContext(ctx)
-
-	loggger.Info("path of the subdir", "path", subDirPath)
-	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
-	}
-
-	newResources, shouldRequeue, err := kubeClient.Apply(ctx, helmTemplate, in.clusterAddon.Status.Resources, shouldDelete)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
-	}
-
-	return newResources, shouldRequeue, nil
-}
-
-func helmTemplateAndDelete(ctx context.Context, in templateAndApplyClusterAddonInput, helmChartName string, buildTemplate []byte) ([]*csov1alpha1.Resource, bool, error) {
-	subDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
-
-	helmTemplate, err := helmTemplateClusterAddon(subDirPath, buildTemplate)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to template helm chart: %w", err)
-	}
-
-	newResources, shouldRequeue, err := in.kubeClient.Delete(ctx, helmTemplate, in.clusterAddon.Status.Resources)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
-	}
-
-	return newResources, shouldRequeue, nil
 }
 
 func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynamic.DynamicClient, discoveryClient *discovery.DiscoveryClient, waitCondition clusteraddon.WaitForCondition) error {
@@ -1089,14 +1051,19 @@ func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynami
 		return fmt.Errorf("failed to evaluate the Ast and environment against the input vars: %w", err)
 	}
 
-	if out.Value() != true {
-		return fmt.Errorf("failed to evaluate the cel expression, please check again: %w", clusteraddon.ConditionNotMatchError)
+	boolVal, ok := (out.Value()).(bool)
+	if !ok {
+		return fmt.Errorf("failed to evaluate the cel expression, its value is no boolean: %w", clusteraddon.ErrConditionNotMatch)
+	}
+
+	if !boolVal {
+		return fmt.Errorf("failed to evaluate the cel expression, please check again: %w", clusteraddon.ErrConditionNotMatch)
 	}
 
 	return nil
 }
 
-func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client, newWay bool) ([]byte, error) {
+func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client) ([]byte, error) {
 	data, err := os.ReadFile(filepath.Clean(addonValuePath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the file %s: %w", addonValuePath, err)
@@ -1144,8 +1111,9 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 	}
 
 	values, ok := unmarshalData.(map[string]interface{})["values"].(string)
+	// we ignore if values prefix is not there
 	if !ok {
-		return nil, fmt.Errorf("key 'values' not found in template of cluster addon helm chart")
+		return buffer.Bytes(), nil
 	}
 
 	return []byte(values), nil
@@ -1328,7 +1296,7 @@ func unTarContent(src, dst string) error {
 	return nil
 }
 
-func removeResourcesFromCurrentListOfObjects(baseList []*csov1alpha1.Resource, itemsToRemove []*csov1alpha1.Resource) []*csov1alpha1.Resource {
+func removeResourcesFromCurrentListOfObjects(baseList, itemsToRemove []*csov1alpha1.Resource) []*csov1alpha1.Resource {
 	// Create a map of items to remove for faster lookup
 	itemsMap := make(map[*csov1alpha1.Resource]bool)
 	for _, item := range itemsToRemove {
