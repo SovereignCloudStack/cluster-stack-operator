@@ -31,19 +31,19 @@ RUN apk add --no-cache curl && \
 
 FROM cgr.dev/chainguard/wolfi-base:latest as wolfi
 
-# renovate: datasource=github-tags depName=kubernetes-sigs/cluster-api
+# update: datasource=github-tags depName=kubernetes-sigs/cluster-api
 ARG CLUSTERCTL_VERSION="v1.6.2"
-# renovate: datasource=github-tags depName=helm/helm
+# update: datasource=github-tags depName=helm/helm
 ENV HELM_VERSION="v3.14.1"
-# renovate: datasource=github-tags depName=kubernetes-sigs/kind
+# update: datasource=github-tags depName=kubernetes-sigs/kind
 ARG KIND_VERSION="v0.20.0"
-# renovate: datasource=github-tags depName=kubernetes/kubernetes
+# update: datasource=github-tags depName=kubernetes/kubernetes
 ARG KUBECTL_VERSION="v1.27.3"
-# renovate: datasource=github-tags depName=kubernetes-sigs/kustomize extractVersion=^kustomize\/v(?<version>.+)$
+# update: datasource=github-tags depName=kubernetes-sigs/kustomize extractVersion=^kustomize\/v(?<version>.+)$
 ARG KUSTOMIZE_VERSION="v5.3.0"
-# renovate: datasource=github-tags depName=aquasecurity/trivy
+# update: datasource=github-tags depName=aquasecurity/trivy
 ARG TRIVY_VERSION="v0.48.3"
-# renovate: datasource=github-tags depName=kubernetes-sigs/controller-tools
+# update: datasource=github-tags depName=kubernetes-sigs/controller-tools
 ARG CONTROLLER_GEN_VERSION="v0.14.0"
 
 # hadolint ignore=DL3018
