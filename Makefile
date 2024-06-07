@@ -80,7 +80,7 @@ WORKER_CLUSTER_KUBECONFIG ?= ".workload-cluster-kubeconfig.yaml"
 MGT_CLUSTER_KUBECONFIG ?= ".mgt-cluster-kubeconfig.yaml"
 
 # Kubebuilder.
-export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.25.0
+export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.29.3
 # versions 
 CTLPTL_VERSION := 0.8.25
 
@@ -126,7 +126,7 @@ KUBECTL := $(abspath $(TOOLS_BIN_DIR)/kubectl)
 HELM := $(abspath $(TOOLS_BIN_DIR)/helm)
 helm: $(HELM) ## Build a local copy of helm
 $(HELM):
-	curl -sSL https://get.helm.sh/helm-v3.12.2-linux-amd64.tar.gz | tar xz -C $(TOOLS_BIN_DIR) --strip-components=1 linux-amd64/helm
+	curl -sSL https://get.helm.sh/helm-v3.15.1-linux-amd64.tar.gz | tar xz -C $(TOOLS_BIN_DIR) --strip-components=1 linux-amd64/helm
 	chmod a+rx $(HELM)
 
 MOCKERY := $(abspath $(TOOLS_BIN_DIR)/mockery)

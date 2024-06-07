@@ -21,7 +21,7 @@ settings = {
     "deploy_cert_manager": True,
     "preload_images_for_kind": True,
     "kind_cluster_name": "cso",
-    "capi_version": "v1.6.0",
+    "capi_version": "v1.7.2",
     "cert_manager_version": "v1.11.0",
     "kustomize_substitutions": {
     },

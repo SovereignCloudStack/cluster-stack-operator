@@ -47,7 +47,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
+	"k8s.io/klog/v2/textlogger"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/log"
 	dockerv1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
@@ -61,7 +61,7 @@ import (
 
 func init() {
 	klog.InitFlags(nil)
-	logger := klogr.New()
+	logger := textlogger.NewLogger(textlogger.NewConfig())
 
 	// use klog as the internal logger for this envtest environment.
 	log.SetLogger(logger)
