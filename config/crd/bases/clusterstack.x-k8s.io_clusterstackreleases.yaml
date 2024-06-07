@@ -11,6 +11,8 @@ spec:
     kind: ClusterStackRelease
     listKind: ClusterStackReleaseList
     plural: clusterstackreleases
+    shortNames:
+    - cskr
     singular: clusterstackrelease
   scope: Namespaced
   versions:

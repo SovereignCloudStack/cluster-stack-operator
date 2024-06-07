@@ -11,6 +11,8 @@ spec:
     kind: ClusterStack
     listKind: ClusterStackList
     plural: clusterstacks
+    shortNames:
+    - csk
     singular: clusterstack
   scope: Namespaced
   versions:
