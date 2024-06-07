@@ -69,7 +69,22 @@ var _ = Describe("ClusterStackReconciler", func() {
 		})
 
 		AfterEach(func() {
-			Expect(testEnv.Cleanup(ctx, testNs, clusterStack)).To(Succeed())
+			Eventually(func() error {
+				return testEnv.Cleanup(ctx, testNs, clusterStack)
+			}, timeout, interval).Should(BeNil())
+		})
+
+		It("checks if the AssetsClientAPIAvailableCondition condition is true", func() {
+			Eventually(func() bool {
+				var foundClusterStackRelease csov1alpha1.ClusterStackRelease
+				if err := testEnv.Get(ctx, clusterStackReleaseKey, &foundClusterStackRelease); err != nil {
+					testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "key", clusterStackReleaseKey)
+					return false
+				}
+
+				testEnv.GetLogger().Info("status condition of cluster stack release", "key", clusterStackReleaseKey, "status condition", foundClusterStackRelease.Status.Conditions)
+				return utils.IsPresentAndTrue(ctx, testEnv.Client, clusterStackReleaseKey, &foundClusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
+			}, timeout, interval).Should(BeTrue())
 		})
 
 		It("creates the cluster stack release object", func() {

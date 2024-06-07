@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package client
+package github
 
 import (
 	"context"
@@ -23,23 +23,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 	"github.com/google/go-github/v52/github"
 	"golang.org/x/oauth2"
 )
-
-// Client contains all functions to talk to Github API.
-type Client interface {
-	DownloadReleaseAssets(ctx context.Context, release *github.RepositoryRelease, path string, assetlist []string) error
-	GetReleaseByTag(ctx context.Context, tag string) (*github.RepositoryRelease, *github.Response, error)
-	ListRelease(ctx context.Context) ([]*github.RepositoryRelease, *github.Response, error)
-}
-
-// Factory is a factory to generate Github clients.
-type Factory interface {
-	NewClient(ctx context.Context) (Client, error)
-}
 
 type realGhClient struct {
 	client     *github.Client
@@ -50,18 +38,18 @@ type realGhClient struct {
 
 type factory struct{}
 
-var _ = Client(&realGhClient{})
+var _ = assetsclient.Client(&realGhClient{})
 
-var _ = Factory(&factory{})
+var _ = assetsclient.Factory(&factory{})
 
 // NewFactory returns a new factory for Github clients.
-func NewFactory() Factory {
+func NewFactory() assetsclient.Factory {
 	return &factory{}
 }
 
-var _ = Client(&realGhClient{})
+var _ = assetsclient.Client(&realGhClient{})
 
-func (*factory) NewClient(ctx context.Context) (Client, error) {
+func (*factory) NewClient(ctx context.Context) (assetsclient.Client, error) {
 	creds, err := NewGitConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create git config: %w", err)
@@ -83,16 +71,26 @@ func (*factory) NewClient(ctx context.Context) (Client, error) {
 	}, nil
 }
 
-func (c *realGhClient) ListRelease(ctx context.Context) ([]*github.RepositoryRelease, *github.Response, error) {
+func (c *realGhClient) ListRelease(ctx context.Context) ([]string, error) {
 	repoRelease, response, err := c.client.Repositories.ListReleases(ctx, c.orgName, c.repoName, &github.ListOptions{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list releases: %w", err)
+		return nil, fmt.Errorf("failed to list releases: %w", err)
 	}
 
-	return repoRelease, response, nil
+	if response != nil && response.StatusCode != 200 {
+		return nil, fmt.Errorf("got unexpected status from call to remote repository: %s", response.Status)
+	}
+
+	releases := []string{}
+
+	for _, release := range repoRelease {
+		releases = append(releases, *release.Name)
+	}
+
+	return releases, nil
 }
 
-func (c *realGhClient) GetReleaseByTag(ctx context.Context, tag string) (*github.RepositoryRelease, *github.Response, error) {
+func (c *realGhClient) getReleaseByTag(ctx context.Context, tag string) (*github.RepositoryRelease, *github.Response, error) {
 	repoRelease, response, err := c.client.Repositories.GetReleaseByTag(ctx, c.orgName, c.repoName, tag)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get release tag: %w", err)
@@ -102,15 +100,21 @@ func (c *realGhClient) GetReleaseByTag(ctx context.Context, tag string) (*github
 }
 
 // DownloadReleaseAssets downloads a list of release assets.
-func (c *realGhClient) DownloadReleaseAssets(ctx context.Context, release *github.RepositoryRelease, path string, assetlist []string) error {
+func (c *realGhClient) DownloadReleaseAssets(ctx context.Context, tag, path string) error {
+	release, response, err := c.getReleaseByTag(ctx, tag)
+	if err != nil {
+		return fmt.Errorf("failed to fetch release tag %s: %w", tag, err)
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to fetch release tag %s with status code %d: %w", tag, response.StatusCode, err)
+	}
+
 	if err := os.MkdirAll(path, os.ModePerm); err != nil { //nolint:gosec //nolint:ignore
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 	// Extract the release assets
 	for _, asset := range release.Assets {
-		if !contains(assetlist, asset.GetName()) {
-			continue
-		}
 		assetPath := filepath.Join(path, asset.GetName())
 		// Create a temporary file (inside the dest dir) to save the downloaded asset file
 		assetFile, err := os.Create(filepath.Clean(assetPath))
@@ -145,7 +149,7 @@ func (c *realGhClient) DownloadReleaseAssets(ctx context.Context, release *githu
 	return nil
 }
 
-func (c *realGhClient) handleRedirect(ctx context.Context, url string, assetFile *os.File) error {
+func (c *realGhClient) handleRedirect(ctx context.Context, url string, assetFile *os.File) (reterr error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("failed to define http get request: %w", err)
@@ -156,6 +160,13 @@ func (c *realGhClient) handleRedirect(ctx context.Context, url string, assetFile
 		return fmt.Errorf("failed to get URL %q: %w", url, err)
 	}
 
+	defer func() {
+		err := resp.Body.Close()
+		if reterr == nil {
+			reterr = err
+		}
+	}()
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download asset, HTTP status code: %d", resp.StatusCode)
 	}
@@ -164,9 +175,6 @@ func (c *realGhClient) handleRedirect(ctx context.Context, url string, assetFile
 		return fmt.Errorf("failed to copy http response in file: %w", err)
 	}
 
-	if err := resp.Body.Close(); err != nil {
-		return fmt.Errorf("failed to close body of response: %w", err)
-	}
 	return nil
 }
 
@@ -195,13 +203,4 @@ func verifyAccess(ctx context.Context, client *github.Client, creds GitConfig) e
 		return fmt.Errorf("failed to get repository: %w", err)
 	}
 	return nil
-}
-
-func contains(source []string, ghAsset string) bool {
-	for _, a := range source {
-		if a == ghAsset || strings.Contains(ghAsset, a) {
-			return true
-		}
-	}
-	return false
 }

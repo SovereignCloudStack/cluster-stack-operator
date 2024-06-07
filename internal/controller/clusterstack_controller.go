@@ -23,11 +23,12 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/clusterstackrelease"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
-	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -55,7 +56,7 @@ import (
 // ClusterStackReconciler reconciles a ClusterStack object.
 type ClusterStackReconciler struct {
 	client.Client
-	GitHubClientFactory githubclient.Factory
+	AssetsClientFactory assetsclient.Factory
 	ReleaseDirectory    string
 	WatchFilterValue    string
 }
@@ -112,24 +113,31 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	var latest *string
 
 	if clusterStack.Spec.AutoSubscribe {
-		gc, err := r.GitHubClientFactory.NewClient(ctx)
+		gc, err := r.AssetsClientFactory.NewClient(ctx)
 		if err != nil {
+			isSet := conditions.IsFalse(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition)
 			conditions.MarkFalse(clusterStack,
-				csov1alpha1.GitAPIAvailableCondition,
-				csov1alpha1.GitTokenOrEnvVariableNotSetReason,
+				csov1alpha1.AssetsClientAPIAvailableCondition,
+				csov1alpha1.FailedCreateAssetsClientReason,
 				clusterv1.ConditionSeverityError,
 				err.Error(),
 			)
-			record.Warnf(clusterStack, "GitTokenOrEnvVariableNotSet", err.Error())
-			return reconcile.Result{}, fmt.Errorf("failed to create Github client: %w", err)
+			record.Warnf(clusterStack, "FailedCreateAssetsClient", err.Error())
+
+			// give the assets client a second change
+			if isSet {
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+			}
+			return reconcile.Result{}, nil
 		}
 
-		conditions.MarkTrue(clusterStack, csov1alpha1.GitAPIAvailableCondition)
+		conditions.MarkTrue(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition)
+
 		latest, err = getLatestReleaseFromRemoteRepository(ctx, clusterStack, gc)
 		if err != nil {
 			// only log error and mark condition as false, but continue
 			conditions.MarkFalse(clusterStack,
-				csov1alpha1.GitReleasesSyncedCondition,
+				csov1alpha1.ReleasesSyncedCondition,
 				csov1alpha1.FailedToSyncReason,
 				clusterv1.ConditionSeverityWarning,
 				err.Error(),
@@ -137,7 +145,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			logger.Error(err, "failed to get latest release from remote repository")
 		}
 
-		conditions.MarkTrue(clusterStack, csov1alpha1.GitReleasesSyncedCondition)
+		conditions.MarkTrue(clusterStack, csov1alpha1.ReleasesSyncedCondition)
 	}
 
 	inUse, err := r.getClusterStackReleasesInUse(ctx, req.Namespace)
@@ -536,21 +544,18 @@ func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.Clust
 	return latest, k8sversion, nil
 }
 
-func getLatestReleaseFromRemoteRepository(ctx context.Context, clusterStack *csov1alpha1.ClusterStack, gc githubclient.Client) (*string, error) {
-	ghReleases, resp, err := gc.ListRelease(ctx)
+func getLatestReleaseFromRemoteRepository(ctx context.Context, clusterStack *csov1alpha1.ClusterStack, ac assetsclient.Client) (*string, error) {
+	releases, err := ac.ListRelease(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list releases on remote Git repository: %w", err)
-	}
-	if resp != nil && resp.StatusCode != 200 {
-		return nil, fmt.Errorf("got unexpected status from call to remote Git repository: %s", resp.Status)
+		return nil, fmt.Errorf("failed to list releases on remote repository: %w", err)
 	}
 
 	var clusterStacks clusterstack.ClusterStacks
 
-	for _, ghRelease := range ghReleases {
-		clusterStackObject, matches, err := matchesSpec(ghRelease.GetTagName(), &clusterStack.Spec)
+	for _, release := range releases {
+		clusterStackObject, matches, err := matchesSpec(release, &clusterStack.Spec)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get match release tag %q with spec of ClusterStack: %w", ghRelease.GetTagName(), err)
+			return nil, fmt.Errorf("failed to get match release tag %q with spec of ClusterStack: %w", release, err)
 		}
 
 		if matches {

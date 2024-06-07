@@ -20,7 +20,7 @@ import (
 
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/controller"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/test/helpers"
-	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
+	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/github"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,14 +47,14 @@ var _ = BeforeSuite(func() {
 	testEnv = helpers.NewTestEnvironment()
 	Expect((&controller.ClusterStackReconciler{
 		Client:              testEnv.Manager.GetClient(),
-		GitHubClientFactory: githubclient.NewFactory(),
+		AssetsClientFactory: githubclient.NewFactory(),
 		ReleaseDirectory:    "/tmp/downloads",
 	}).SetupWithManager(ctx, testEnv.Manager, controllerruntimecontroller.Options{})).To(Succeed())
 	Expect((&controller.ClusterStackReleaseReconciler{
 		Client:              testEnv.Manager.GetClient(),
 		RESTConfig:          testEnv.Manager.GetConfig(),
 		KubeClientFactory:   kube.NewFactory(),
-		GitHubClientFactory: githubclient.NewFactory(),
+		AssetsClientFactory: githubclient.NewFactory(),
 		ReleaseDirectory:    "/tmp/downloads",
 	}).SetupWithManager(ctx, testEnv.Manager, controllerruntimecontroller.Options{})).To(Succeed())
 

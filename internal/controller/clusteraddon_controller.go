@@ -27,6 +27,7 @@ import (
 	"time"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/release"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/workloadcluster"
@@ -67,6 +68,7 @@ type ClusterAddonReconciler struct {
 	RestConfigSettings
 	ReleaseDirectory       string
 	KubeClientFactory      kube.Factory
+	AssetsClientFactory    assetsclient.Factory
 	WatchFilterValue       string
 	WorkloadClusterFactory workloadcluster.Factory
 }

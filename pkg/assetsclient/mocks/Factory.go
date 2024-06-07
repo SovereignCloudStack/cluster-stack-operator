@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	client "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
+	assetsclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -16,19 +16,19 @@ type Factory struct {
 }
 
 // NewClient provides a mock function with given fields: ctx
-func (_m *Factory) NewClient(ctx context.Context) (client.Client, error) {
+func (_m *Factory) NewClient(ctx context.Context) (assetsclient.Client, error) {
 	ret := _m.Called(ctx)
 
-	var r0 client.Client
+	var r0 assetsclient.Client
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (client.Client, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) (assetsclient.Client, error)); ok {
 		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) client.Client); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) assetsclient.Client); ok {
 		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(client.Client)
+			r0 = ret.Get(0).(assetsclient.Client)
 		}
 	}
 
