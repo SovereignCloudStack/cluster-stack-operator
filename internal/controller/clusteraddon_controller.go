@@ -406,6 +406,9 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
 		clusterAddon.Status.Ready = true
 
+		// unset spec hook and make cluster addon ready
+		clusterAddon.Spec.Hook = ""
+
 		return ctrl.Result{}, nil
 	}
 
