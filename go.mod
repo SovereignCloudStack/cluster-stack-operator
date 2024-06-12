@@ -39,6 +39,7 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/sync v0.7.0 // indirect
+	google.golang.org/appengine v1.6.8 // indirect
 	k8s.io/cluster-bootstrap v0.29.3 // indirect
 )
 
