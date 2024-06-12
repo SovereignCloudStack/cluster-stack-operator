@@ -7,7 +7,7 @@ require (
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
 	github.com/google/go-github/v52 v52.0.0
 	github.com/onsi/ginkgo/v2 v2.17.3
-	github.com/onsi/gomega v1.33.0
+	github.com/onsi/gomega v1.33.1
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/mod v0.17.0
 	golang.org/x/oauth2 v0.18.0
