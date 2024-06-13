@@ -322,7 +322,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
 			clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook]))
 			for i, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
-				clusterAddon.Status.Stages[i].Name = stage.HelmChartName
+				clusterAddon.Status.Stages[i].Name = stage.Name
 				clusterAddon.Status.Stages[i].Action = stage.Action
 				clusterAddon.Status.Stages[i].Phase = csov1alpha1.StagePhasePending
 			}
@@ -337,7 +337,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
 				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages["BeforeClusterUpgrade"]))
 				for i, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
-					clusterAddon.Status.Stages[i].Name = stage.HelmChartName
+					clusterAddon.Status.Stages[i].Name = stage.Name
 					clusterAddon.Status.Stages[i].Action = stage.Action
 					clusterAddon.Status.Stages[i].Phase = csov1alpha1.StagePhasePending
 				}
@@ -361,6 +361,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// we just take the Helm charts that are supposed to be installed in the BeforeClusterUpgrade hook and apply them.
 	if oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 		clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
+
 		for _, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
 			shouldRequeue, err := r.executeStage(ctx, stage, in)
 			if err != nil {
@@ -428,7 +429,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
 		shouldRequeue, err := r.executeStage(ctx, stage, in)
 		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to execute stage: %q: %w", stage.HelmChartName, err)
+			return reconcile.Result{}, fmt.Errorf("failed to execute stage: %q: %w", stage.Name, err)
 		}
 		if shouldRequeue {
 			return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
@@ -490,14 +491,14 @@ func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in *t
 	)
 
 	for _, stage := range clusterAddonConfig.AddonStages[in.clusterAddon.Spec.Hook] {
-		if _, err := os.Stat(filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml)); err == nil {
-			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client)
+		if _, err := os.Stat(filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name, release.OverwriteYaml)); err == nil {
+			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build template from new cluster addon values of the latest cluster stack: %w", err)
 			}
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.newDestinationClusterAddonChartDir, stage.HelmChartName), newBuildTemplate)
+		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name), newBuildTemplate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template new helm chart of the latest cluster stack: %w", err)
 		}
@@ -566,14 +567,14 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 	}
 
 	for _, stage := range clusterAddonConfig.AddonStages[hook] {
-		if _, err := os.Stat(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml)); err == nil {
-			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName, release.OverwriteYaml), in.cluster, r.Client)
+		if _, err := os.Stat(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name, release.OverwriteYaml)); err == nil {
+			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build template from new cluster addon values: %w", err)
 			}
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.HelmChartName), newBuildTemplate)
+		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name), newBuildTemplate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template new helm chart: %w", err)
 		}
@@ -737,7 +738,7 @@ func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage *cluste
 		err           error
 	)
 
-	_, exists := in.chartMap[stage.HelmChartName]
+	_, exists := in.chartMap[stage.Name]
 	if !exists {
 		// do not reconcile by returning error, just create an event.
 		conditions.MarkFalse(
@@ -746,18 +747,18 @@ func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage *cluste
 			csov1alpha1.HelmChartMissingReason,
 			clusterv1.ConditionSeverityInfo,
 			"helm chart name doesn't exists in the cluster addon helm chart: %q",
-			stage.HelmChartName,
+			stage.Name,
 		)
 		return false, nil
 	}
 
 check:
-	switch in.clusterAddon.GetStagePhase(stage.HelmChartName, stage.Action) {
+	switch in.clusterAddon.GetStagePhase(stage.Name, stage.Action) {
 	case csov1alpha1.StagePhasePending, csov1alpha1.StagePhaseWaitingForPreCondition:
 		// If WaitForPreCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPreCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
-			logger.V(1).Info("starting to evaluate pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("starting to evaluate pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPreCondition); err != nil {
 				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
 					conditions.MarkFalse(
@@ -765,25 +766,25 @@ check:
 						csov1alpha1.EvaluatedCELCondition,
 						csov1alpha1.FailedToEvaluatePreConditionReason,
 						clusterv1.ConditionSeverityInfo,
-						"failed to successfully evaluate pre condition: %q: %s", stage.HelmChartName, err.Error(),
+						"failed to successfully evaluate pre condition: %q: %s", stage.Name, err.Error(),
 					)
 
-					in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
+					in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
 
 					return true, nil
 				}
 				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for pre condition: %w", err)
 			}
-			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 		}
 
-		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseApplyingOrDeleting)
+		in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseApplyingOrDeleting)
 		goto check
 
 	case csov1alpha1.StagePhaseApplyingOrDeleting:
 		if stage.Action == clusteraddon.Apply {
-			logger.V(1).Info("starting to apply helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = r.templateAndApplyNewClusterStackAddonHelmChart(ctx, in, stage.HelmChartName)
+			logger.V(1).Info("starting to apply helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+			shouldRequeue, err = r.templateAndApplyNewClusterStackAddonHelmChart(ctx, in, stage.Name)
 			if err != nil {
 				return false, fmt.Errorf("failed to helm template and apply: %w", err)
 			}
@@ -793,22 +794,22 @@ check:
 					csov1alpha1.HelmChartAppliedCondition,
 					csov1alpha1.FailedToApplyObjectsReason,
 					clusterv1.ConditionSeverityInfo,
-					"failed to successfully apply helm chart: %q", stage.HelmChartName,
+					"failed to successfully apply helm chart: %q", stage.Name,
 				)
 
 				return true, nil
 			}
-			logger.V(1).Info("finished applying helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("finished applying helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 
 			// remove status resource if applied successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
+			in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
 			goto check
 		} else {
 			// Delete part
-			logger.V(1).Info("starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = helmTemplateAndDeleteNewClusterStack(ctx, in, stage.HelmChartName)
+			logger.V(1).Info("starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+			shouldRequeue, err = helmTemplateAndDeleteNewClusterStack(ctx, in, stage.Name)
 			if err != nil {
 				return false, fmt.Errorf("failed to delete helm chart: %w", err)
 			}
@@ -818,17 +819,17 @@ check:
 					csov1alpha1.HelmChartDeletedCondition,
 					csov1alpha1.FailedToDeleteObjectsReason,
 					clusterv1.ConditionSeverityInfo,
-					"failed to successfully delete helm chart: %q", stage.HelmChartName,
+					"failed to successfully delete helm chart: %q", stage.Name,
 				)
 
 				return true, nil
 			}
-			logger.V(1).Info("finished deleting helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("finished deleting helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 
 			// remove status resource if deleted successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-			in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
+			in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
 			goto check
 		}
 
@@ -836,7 +837,7 @@ check:
 		// If WaitForPostCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPostCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
-			logger.V(1).Info("starting to evaluate post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("starting to evaluate post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPostCondition); err != nil {
 				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
 					conditions.MarkFalse(
@@ -844,17 +845,17 @@ check:
 						csov1alpha1.EvaluatedCELCondition,
 						csov1alpha1.FailedToEvaluatePostConditionReason,
 						clusterv1.ConditionSeverityInfo,
-						"failed to successfully evaluate post condition: %q: %s", stage.HelmChartName, err.Error(),
+						"failed to successfully evaluate post condition: %q: %s", stage.Name, err.Error(),
 					)
 
 					return true, nil
 				}
 				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for post condition: %w", err)
 			}
-			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "helm chart", stage.HelmChartName, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 		}
 
-		in.clusterAddon.SetStagePhase(stage.HelmChartName, stage.Action, csov1alpha1.StagePhaseDone)
+		in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseDone)
 	}
 
 	return false, nil
@@ -926,7 +927,7 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	return &releaseAsset, false, nil
 }
 
-func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, name string) (bool, error) {
 	var (
 		oldHelmTemplate  []byte
 		oldBuildTemplate []byte
@@ -935,7 +936,7 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 	)
 
 	if in.oldDestinationClusterAddonChartDir != "" {
-		oldClusterStackSubDirPath := filepath.Join(in.oldDestinationClusterAddonChartDir, helmChartName)
+		oldClusterStackSubDirPath := filepath.Join(in.oldDestinationClusterAddonChartDir, name)
 
 		// we skip helm templating if last cluster stack don't follow the new convention.
 		if _, err := os.Stat(filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
@@ -951,7 +952,7 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 		}
 	}
 
-	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
+	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, name)
 
 	if _, err := os.Stat(filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
 		newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
@@ -976,13 +977,13 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 	return shouldRequeue, nil
 }
 
-func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in *templateAndApplyClusterAddonInput, helmChartName string) (bool, error) {
+func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in *templateAndApplyClusterAddonInput, name string) (bool, error) {
 	var (
 		buildTemplate []byte
 		err           error
 	)
 
-	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, helmChartName)
+	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, name)
 	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate)
 	if err != nil {
 		return false, fmt.Errorf("failed to template new helm chart: %w", err)
