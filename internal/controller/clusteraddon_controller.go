@@ -454,6 +454,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueCreated)
 
 		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+		clusterAddon.Status.Ready = true
 	}
 
 	// Helm chart has been applied successfully
@@ -466,9 +467,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// remove the status resource if hook is finished
 	clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
-	// unset spec hook and make cluster addon ready
+	// unset spec hook
 	clusterAddon.Spec.Hook = ""
-	clusterAddon.Status.Ready = true
 
 	return ctrl.Result{}, nil
 }
