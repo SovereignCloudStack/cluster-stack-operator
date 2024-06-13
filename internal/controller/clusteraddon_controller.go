@@ -412,8 +412,15 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// If hook is empty we can don't want to proceed executing staged according to current hook
 	// hence we can return.
 	if clusterAddon.Spec.Hook == "" {
+		conditions.MarkFalse(clusterAddon,
+			csov1alpha1.HookServerReadyCondition,
+			csov1alpha1.HookServerUnresponsiveReason,
+			clusterv1.ConditionSeverityInfo,
+			"hook server hasn't updated the spec.hook yet",
+		)
 		return reconcile.Result{}, nil
 	}
+	conditions.MarkTrue(clusterAddon, csov1alpha1.HookServerReadyCondition)
 
 	for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
 		shouldRequeue, err := r.executeStage(ctx, stage, in)

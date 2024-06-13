@@ -57,6 +57,14 @@ const (
 )
 
 const (
+	// HookServerReadyCondition reports on whether hook server is ready or not.
+	HookServerReadyCondition clusterv1.ConditionType = "HookServerReady"
+
+	// HookServerUnresponsiveReason is used when hook server don't update the clusterAddon.Spec.Hook.
+	HookServerUnresponsiveReason = "HookServerUnresponsive"
+)
+
+const (
 	// HelmChartDeletedCondition reports on whether the relevant helm chart has been applied.
 	HelmChartDeletedCondition clusterv1.ConditionType = "HelmChartDeleted"
 
