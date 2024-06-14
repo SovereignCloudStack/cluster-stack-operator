@@ -775,6 +775,8 @@ check:
 				}
 				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for pre condition: %w", err)
 			}
+
+			conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
 			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 		}
 
@@ -852,6 +854,8 @@ check:
 				}
 				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for post condition: %w", err)
 			}
+
+			conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
 			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 		}
 
