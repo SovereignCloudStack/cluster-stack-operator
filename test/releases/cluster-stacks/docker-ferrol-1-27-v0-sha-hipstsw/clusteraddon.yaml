@@ -2,10 +2,10 @@ apiVersion: clusteraddonconfig.x-k8s.io/v1alpha1
 clusterAddonVersion: clusteraddons.clusterstack.x-k8s.io/v1alpha1
 addonStages:
   AfterControlPlaneInitialized:
-    - helmChartName: metrics-server
+    - name: metrics-server
       action: apply
   BeforeClusterUpgrade:
-    - helmChartName: ngnix
+    - name: ngnix
       action: apply
       waitForPostCondition:
         objects:

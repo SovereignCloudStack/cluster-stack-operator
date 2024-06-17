@@ -57,7 +57,7 @@ type WaitForCondition struct {
 
 // Stage is a stage of a hook in which a certain Helm chart is applied and pre- and post-conditions are evaluated if they exist.
 type Stage struct {
-	HelmChartName        string           `yaml:"helmChartName"`
+	Name                 string           `yaml:"name"`
 	Action               Action           `yaml:"action"`
 	WaitForPreCondition  WaitForCondition `yaml:"waitForPreCondition,omitempty"`
 	WaitForPostCondition WaitForCondition `yaml:"waitForPostCondition,omitempty"`

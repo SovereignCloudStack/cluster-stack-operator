@@ -63,7 +63,7 @@ var (
 type StageStatus struct {
 	// Name represent name of the helm chart
 	// +optional
-	Name string `json:"helmChartName"`
+	Name string `json:"name"`
 
 	// Action is the action of the helm chart. e.g. - apply and delete.
 	// +optional
@@ -132,9 +132,9 @@ type ClusterAddon struct {
 }
 
 // GetStagePhase returns helm chart status for the helm chart.
-func (r *ClusterAddon) GetStagePhase(helmChartName string, action clusteraddon.Action) StagePhase {
+func (r *ClusterAddon) GetStagePhase(stageName string, action clusteraddon.Action) StagePhase {
 	for _, stage := range r.Status.Stages {
-		if stage.Name == helmChartName && stage.Action == action {
+		if stage.Name == stageName && stage.Action == action {
 			return stage.Phase
 		}
 	}
@@ -144,9 +144,9 @@ func (r *ClusterAddon) GetStagePhase(helmChartName string, action clusteraddon.A
 }
 
 // SetStagePhase sets the helm chart status phase.
-func (r *ClusterAddon) SetStagePhase(helmChartName string, action clusteraddon.Action, phase StagePhase) {
+func (r *ClusterAddon) SetStagePhase(stageName string, action clusteraddon.Action, phase StagePhase) {
 	for i := range r.Status.Stages {
-		if r.Status.Stages[i].Name == helmChartName && r.Status.Stages[i].Action == action {
+		if r.Status.Stages[i].Name == stageName && r.Status.Stages[i].Action == action {
 			r.Status.Stages[i].Phase = phase
 		}
 	}
