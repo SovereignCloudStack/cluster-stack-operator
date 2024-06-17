@@ -6,11 +6,11 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
 	github.com/google/go-github/v52 v52.0.0
-	github.com/onsi/ginkgo/v2 v2.17.3
+	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
-	github.com/stretchr/testify v1.8.4
-	golang.org/x/mod v0.17.0
-	golang.org/x/oauth2 v0.18.0
+	github.com/stretchr/testify v1.9.0
+	golang.org/x/mod v0.18.0
+	golang.org/x/oauth2 v0.21.0
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
 	k8s.io/cli-runtime v0.29.3
@@ -39,7 +39,6 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	google.golang.org/appengine v1.6.8 // indirect
 	k8s.io/cluster-bootstrap v0.29.3 // indirect
 )
 
