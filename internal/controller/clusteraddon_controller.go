@@ -63,6 +63,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -120,6 +121,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		}
 	}()
 
+	controllerutil.AddFinalizer(clusterAddon, csov1alpha1.ClusterAddonFinalizer)
+
 	// retrieve associated cluster object
 	cluster := &clusterv1.Cluster{}
 	clusterName := client.ObjectKey{
@@ -128,6 +131,12 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	}
 
 	if err := r.Get(ctx, clusterName, cluster); err != nil {
+		if apierrors.IsNotFound(err) && !clusterAddon.DeletionTimestamp.IsZero() {
+			controllerutil.RemoveFinalizer(clusterAddon, csov1alpha1.ClusterAddonFinalizer)
+
+			return reconcile.Result{}, nil
+		}
+
 		return ctrl.Result{}, fmt.Errorf("failed to find cluster %v: %w", clusterName, err)
 	}
 
