@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-go
@@ -61,7 +61,7 @@ jobs:
           echo 'EOF' >> $GITHUB_ENV
 
       - name: Build and push cso image
-        uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318 # v6
+        uses: docker/build-push-action@94f8f8c2eec4bc3f1d78c1755580779804cb87b2 # v6
         id: docker_build_release_cso
         with:
           provenance: false
@@ -135,7 +135,7 @@ jobs:
         run: echo "RELEASE_TAG=${GITHUB_REF:10}" >> $GITHUB_ENV
 
       - name: checkout code
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
         with:
           fetch-depth: 0
 
@@ -159,7 +159,7 @@ jobs:
           make release-notes
 
       - name: Release
-        uses: softprops/action-gh-release@69320dbe05506a9a39fc8ae11030b214ec2d1f87 # v2
+        uses: softprops/action-gh-release@a74c6b72af54cfa997e81df42d94703d6313a2d0 # v2
         with:
           draft: true
           files: out/*
