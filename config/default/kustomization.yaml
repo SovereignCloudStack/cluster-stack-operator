@@ -2,45 +2,102 @@ namespace: cso-system
 
 namePrefix: cso-
 
-commonLabels:
-  cluster.x-k8s.io/provider: "cluster-stack-operator"
 
 resources:
-  - ../crd
-  - ../rbac
-  - ../manager
-  - ../webhook
-  - ../certmanager
+- ../crd
+- ../rbac
+- ../manager
+- ../webhook
+- ../certmanager
 
-patchesStrategicMerge:
-  - manager_config_patch.yaml
-  - manager_webhook_patch.yaml
-  - webhookcainjection_patch.yaml
-  - manager_pull_policy.yaml
-vars:
-  - name: CERTIFICATE_NAMESPACE # namespace of the certificate CR
-    objref:
-      kind: Certificate
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+- includeSelectors: true
+  pairs:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+patches:
+- path: manager_config_patch.yaml
+- path: manager_webhook_patch.yaml
+- path: webhookcainjection_patch.yaml
+- path: manager_pull_policy.yaml
+replacements:
+- source:
+    fieldPath: metadata.namespace
+    kind: Certificate
+    name: serving-cert
+  targets:
+  - fieldPaths:
+    - metadata.annotations.[cert-manager.io/inject-ca-from]
+    options:
+      delimiter: /
+    select: {}
+- source:
+    kind: Certificate
+    name: serving-cert
+  targets:
+  - fieldPaths:
+    - metadata.annotations.[cert-manager.io/inject-ca-from]
+    options:
+      delimiter: /
+      index: 1
+    select: {}
+- source:
+    fieldPath: metadata.namespace
+    kind: Service
+    name: webhook-service
+  targets:
+  - fieldPaths:
+    - |-
+      spec.# $(SERVICE_NAME) and $(SERVICE_NAMESPACE) will be substituted by kustomize
+      dnsNames.0
+    options:
+      delimiter: .
+      index: 1
+    select:
       group: cert-manager.io
-      version: v1
-      name: serving-cert # this name should match the one in certificate.yaml
-    fieldref:
-      fieldpath: metadata.namespace
-  - name: CERTIFICATE_NAME
-    objref:
       kind: Certificate
+      name: serving-cert
+      namespace: system
+      version: v1
+  - fieldPaths:
+    - |-
+      spec.# $(SERVICE_NAME) and $(SERVICE_NAMESPACE) will be substituted by kustomize
+      dnsNames.1
+    options:
+      delimiter: .
+      index: 1
+    select:
       group: cert-manager.io
+      kind: Certificate
+      name: serving-cert
+      namespace: system
       version: v1
-      name: serving-cert # this name should match the one in certificate.yaml
-  - name: SERVICE_NAMESPACE # namespace of the service
-    objref:
-      kind: Service
+- source:
+    kind: Service
+    name: webhook-service
+  targets:
+  - fieldPaths:
+    - |-
+      spec.# $(SERVICE_NAME) and SERVICE_NAMESPACE will be substituted by kustomize
+      dnsNames.0
+    options:
+      delimiter: .
+    select:
+      group: cert-manager.io
+      kind: Certificate
+      name: serving-cert
+      namespace: system
       version: v1
-      name: webhook-service
-    fieldref:
-      fieldpath: metadata.namespace
-  - name: SERVICE_NAME
-    objref:
-      kind: Service
+  - fieldPaths:
+    - |-
+      spec.# $(SERVICE_NAME) and SERVICE_NAMESPACE will be substituted by kustomize
+      dnsNames.1
+    options:
+      delimiter: .
+    select:
+      group: cert-manager.io
+      kind: Certificate
+      name: serving-cert
+      namespace: system
       version: v1
-      name: webhook-service

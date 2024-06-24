@@ -97,7 +97,7 @@ $(CONTROLLER_GEN): # Build controller-gen from tools folder.
 KUSTOMIZE := $(abspath $(TOOLS_BIN_DIR)/kustomize)
 kustomize: $(KUSTOMIZE) ## Build a local copy of kustomize
 $(KUSTOMIZE): # Build kustomize from tools folder.
-	go install sigs.k8s.io/kustomize/kustomize/v4@v4.5.7
+	go install sigs.k8s.io/kustomize/kustomize/v5@v5.4.2
 
 TILT := $(abspath $(TOOLS_BIN_DIR)/tilt)
 tilt: $(TILT) ## Build a local copy of tilt
