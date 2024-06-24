@@ -27,9 +27,10 @@ import (
 	//+kubebuilder:scaffold:imports
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/controller"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/fake"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/github"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/csoversion"
-	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
-	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client/fake"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/utillog"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/workloadcluster"
@@ -131,11 +132,11 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	var gitFactory githubclient.Factory
+	var assetsClientFactory assetsclient.Factory
 	if localMode {
-		gitFactory = fake.NewFactory()
+		assetsClientFactory = fake.NewFactory()
 	} else {
-		gitFactory = githubclient.NewFactory()
+		assetsClientFactory = github.NewFactory()
 	}
 
 	restConfig := mgr.GetConfig()
@@ -153,7 +154,7 @@ func main() {
 	if err = (&controller.ClusterStackReconciler{
 		Client:              mgr.GetClient(),
 		ReleaseDirectory:    releaseDir,
-		GitHubClientFactory: gitFactory,
+		AssetsClientFactory: assetsClientFactory,
 		WatchFilterValue:    watchFilterValue,
 	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{MaxConcurrentReconciles: clusterStackConcurrency}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterStack")
@@ -166,7 +167,7 @@ func main() {
 		ReleaseDirectory:    releaseDir,
 		WatchFilterValue:    watchFilterValue,
 		KubeClientFactory:   kube.NewFactory(),
-		GitHubClientFactory: gitFactory,
+		AssetsClientFactory: assetsClientFactory,
 	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{MaxConcurrentReconciles: clusterStackReleaseConcurrency}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterStackRelease")
 		os.Exit(1)
@@ -179,6 +180,7 @@ func main() {
 		WatchFilterValue:       watchFilterValue,
 		KubeClientFactory:      kube.NewFactory(),
 		WorkloadClusterFactory: workloadcluster.NewFactory(),
+		AssetsClientFactory:    assetsClientFactory,
 	}).SetupWithManager(ctx, mgr, controllerruntimecontroller.Options{MaxConcurrentReconciles: clusterAddonConcurrency}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterAddon")
 		os.Exit(1)

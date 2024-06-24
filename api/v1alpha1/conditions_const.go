@@ -78,17 +78,17 @@ const (
 )
 
 const (
-	// GitAPIAvailableCondition is used when Git API is available.
-	GitAPIAvailableCondition clusterv1.ConditionType = "GitAPIAvailable"
+	// AssetsClientAPIAvailableCondition is used when AssetsClient API is available.
+	AssetsClientAPIAvailableCondition clusterv1.ConditionType = "AssetsClientAPIAvailable"
 
-	// GitTokenOrEnvVariableNotSetReason is used when user don't specify the token or environment variable.
-	GitTokenOrEnvVariableNotSetReason = "GitTokenOrEnvVariableNotSet" //#nosec
+	// FailedCreateAssetsClientReason is used when user don't specify the token or environment variable required for initializing the assets client.
+	FailedCreateAssetsClientReason = "FailedCreateAssetsClient" //#nosec
 )
 
 const (
-	// GitReleasesSyncedCondition is used when Git releases have been synced successfully.
-	GitReleasesSyncedCondition clusterv1.ConditionType = "GitReleasesSynced"
+	// ReleasesSyncedCondition is used when releases have been synced successfully.
+	ReleasesSyncedCondition clusterv1.ConditionType = "ReleasesSynced"
 
-	// FailedToSyncReason is used when Git releases could not be synced.
+	// FailedToSyncReason is used when releases could not be synced.
 	FailedToSyncReason = "FailedToSync"
 )

@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package client contains interface for github client.
-package client
+// Package github provides utilities for talking to github API.
+package github
 
 import (
 	"fmt"
