@@ -46,6 +46,23 @@ const (
 )
 
 const (
+	// HelmChartTemplatedCondition reports on whether the relevant helm chart has been templated properly.
+	HelmChartTemplatedCondition clusterv1.ConditionType = "HelmChartTemplated"
+
+	// TemplateOldClusterStackOverwriteFailedReason is used when old cluster stack overwrite.yaml is wrong.
+	TemplateOldClusterStackOverwriteFailedReason = "TemplateOldClusterStackOverwriteFailed"
+
+	// TemplateOldClusterStackFailedReason is used when there is a issue doing helm template for the old cluster stack.
+	TemplateOldClusterStackFailedReason = "TemplateOldClusterStackFailed"
+
+	// TemplateNewClusterStackOverwriteFailedReason is used when new cluster stack overwrite.yaml is wrong.
+	TemplateNewClusterStackOverwriteFailedReason = "TemplateNewClusterStackOverwriteFailed"
+
+	// TemplateNewClusterStackFailedReason is used when there is a issue doing helm template for the new cluster stack.
+	TemplateNewClusterStackFailedReason = "TemplateNewClusterStackFailed"
+)
+
+const (
 	// HelmChartAppliedCondition reports on whether the relevant helm chart has been applied.
 	HelmChartAppliedCondition clusterv1.ConditionType = "HelmChartApplied"
 
