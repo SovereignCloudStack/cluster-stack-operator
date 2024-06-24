@@ -198,7 +198,14 @@ func (cs *ClusterStack) Validate() error {
 	return nil
 }
 
+// String returns cluster stack with "-" notation.
 func (cs *ClusterStack) String() string {
 	// release tag: myprovider-myclusterstack-1-26-v1
 	return strings.Join([]string{cs.Provider, cs.Name, cs.KubernetesVersion.String(), cs.Version.String()}, Separator)
+}
+
+// StringWithDot returns cluster stack with semver "." notation.
+func (cs *ClusterStack) StringWithDot() string {
+	// release tag: myprovider-myclusterstack-1-26-v0-sha.hd237u2
+	return strings.Join([]string{cs.Provider, cs.Name, cs.KubernetesVersion.String(), cs.Version.StringWithDot()}, Separator)
 }
