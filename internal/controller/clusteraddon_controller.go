@@ -742,11 +742,6 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage *clusteraddon.Stage, in *templateAndApplyClusterAddonInput) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	var (
-		shouldRequeue bool
-		err           error
-	)
-
 	_, exists := in.chartMap[stage.Name]
 	if !exists {
 		// do not reconcile by returning error, just create an event.
@@ -794,10 +789,28 @@ check:
 
 	case csov1alpha1.StagePhaseApplyingOrDeleting:
 		if stage.Action == clusteraddon.Apply {
-			logger.V(1).Info("starting to apply helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = r.templateAndApplyNewClusterStackAddonHelmChart(ctx, in, stage.Name)
+			logger.V(1).Info("starting to template helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+			shouldReturn, oldTemplate, newTemplate, err := r.templateNewClusterStackAddonHelmChart(ctx, in, stage.Name)
 			if err != nil {
-				return false, fmt.Errorf("failed to helm template and apply: %w", err)
+				return false, fmt.Errorf("failed to helm template: %w", err)
+			}
+			if shouldReturn {
+				return false, nil
+			}
+
+			logger.V(1).Info("finished templating helm chart and starting to apply helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+
+			newResources, shouldRequeue, err := in.kubeClient.ApplyNewClusterStack(ctx, oldTemplate, newTemplate)
+			if err != nil {
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.HelmChartAppliedCondition,
+					csov1alpha1.FailedToApplyObjectsReason,
+					clusterv1.ConditionSeverityInfo,
+					"failed to successfully apply helm chart: %q: %s", stage.Name, err.Error(),
+				)
+
+				return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
 			}
 			if shouldRequeue {
 				conditions.MarkFalse(
@@ -810,7 +823,13 @@ check:
 
 				return true, nil
 			}
+
+			// This is for the current stage objects and will be removed once done.
+			in.clusterAddon.Status.Resources = newResources
 			logger.V(1).Info("finished applying helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+
+			// delete the false condition with failed to apply reason
+			conditions.Delete(in.clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
 			// remove status resource if applied successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
@@ -819,12 +838,23 @@ check:
 			goto check
 		} else {
 			// Delete part
-			logger.V(1).Info("starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-			shouldRequeue, err = helmTemplateAndDeleteNewClusterStack(ctx, in, stage.Name)
+			logger.V(1).Info("starting to template helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+			helmTemplate, err := helmTemplateNewClusterStack(in, stage.Name)
 			if err != nil {
-				return false, fmt.Errorf("failed to delete helm chart: %w", err)
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.HelmChartTemplatedCondition,
+					csov1alpha1.TemplateNewClusterStackFailedReason,
+					clusterv1.ConditionSeverityError,
+					"failed to template new helm chart: %s", err.Error(),
+				)
+
+				return false, nil
 			}
-			if shouldRequeue {
+			logger.V(1).Info("finished templating helm chart and starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+
+			deletedResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, helmTemplate)
+			if err != nil {
 				conditions.MarkFalse(
 					in.clusterAddon,
 					csov1alpha1.HelmChartDeletedCondition,
@@ -833,12 +863,21 @@ check:
 					"failed to successfully delete helm chart: %q", stage.Name,
 				)
 
+				return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
+			}
+			if shouldRequeue {
 				return true, nil
 			}
+
+			// This is for the current stage objects and will be removed once done.
+			in.clusterAddon.Status.Resources = deletedResources
 			logger.V(1).Info("finished deleting helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 
 			// remove status resource if deleted successfully
 			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+
+			// delete the false condition with failed to apply reason
+			conditions.Delete(in.clusterAddon, csov1alpha1.HelmChartDeletedCondition)
 
 			in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
 			goto check
@@ -940,12 +979,13 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	return &releaseAsset, false, nil
 }
 
-func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, name string) (bool, error) {
+func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, name string) (shouldReturn bool, oldTemplate, newTemplate []byte, err error) { //nolint:revive // ignoring the 4 return values
 	var (
-		oldHelmTemplate  []byte
 		oldBuildTemplate []byte
+		oldHelmTemplate  []byte
+
 		newBuildTemplate []byte
-		err              error
+		newHelmTemplate  []byte
 	)
 
 	if in.oldDestinationClusterAddonChartDir != "" {
@@ -955,12 +995,40 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 		if _, err := os.Stat(filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
 			oldBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
-				return false, fmt.Errorf("failed to build template from old cluster addon values: %w", err)
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.HelmChartTemplatedCondition,
+					csov1alpha1.TemplateOldClusterStackOverwriteFailedReason,
+					clusterv1.ConditionSeverityError,
+					"failed to build template from old cluster addon values: %s", err.Error(),
+				)
+
+				record.Warnf(
+					in.clusterAddon,
+					csov1alpha1.TemplateOldClusterStackOverwriteFailedReason,
+					"failed to build template from old cluster addon values: %s", err.Error(),
+				)
+
+				return true, nil, nil, nil
 			}
 
 			oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate)
 			if err != nil {
-				return false, fmt.Errorf("failed to template old helm chart: %w", err)
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.HelmChartTemplatedCondition,
+					csov1alpha1.TemplateOldClusterStackFailedReason,
+					clusterv1.ConditionSeverityError,
+					"failed to template old helm chart: %s", err.Error(),
+				)
+
+				record.Warnf(
+					in.clusterAddon,
+					csov1alpha1.TemplateOldClusterStackFailedReason,
+					"failed to template old helm chart: %s", err.Error(),
+				)
+
+				return true, nil, nil, nil
 			}
 		}
 	}
@@ -970,47 +1038,57 @@ func (r *ClusterAddonReconciler) templateAndApplyNewClusterStackAddonHelmChart(c
 	if _, err := os.Stat(filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
 		newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
 		if err != nil {
-			return false, fmt.Errorf("failed to build template from new cluster addon values: %w", err)
+			conditions.MarkFalse(
+				in.clusterAddon,
+				csov1alpha1.HelmChartTemplatedCondition,
+				csov1alpha1.TemplateNewClusterStackOverwriteFailedReason,
+				clusterv1.ConditionSeverityError,
+				"failed to build template from new cluster addon values: %s", err.Error(),
+			)
+
+			record.Eventf(
+				in.clusterAddon,
+				csov1alpha1.TemplateNewClusterStackOverwriteFailedReason,
+				"failed to build template from new cluster addon values: %s", err.Error(),
+			)
+
+			return true, nil, nil, nil
 		}
 	}
 
-	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate)
+	newHelmTemplate, err = helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate)
 	if err != nil {
-		return false, fmt.Errorf("failed to template new helm chart: %w", err)
+		conditions.MarkFalse(
+			in.clusterAddon,
+			csov1alpha1.HelmChartTemplatedCondition,
+			csov1alpha1.TemplateNewClusterStackFailedReason,
+			clusterv1.ConditionSeverityError,
+			"failed to template new helm chart: %s", err.Error(),
+		)
+
+		record.Eventf(
+			in.clusterAddon,
+			csov1alpha1.TemplateNewClusterStackFailedReason,
+			"failed to template new helm chart: %s", err.Error(),
+		)
+
+		return true, nil, nil, nil
 	}
+	conditions.Delete(in.clusterAddon, csov1alpha1.HelmChartTemplatedCondition)
 
-	newResources, shouldRequeue, err := in.kubeClient.ApplyNewClusterStack(ctx, oldHelmTemplate, newHelmTemplate)
-	if err != nil {
-		return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
-	}
-
-	// This is for the current stage objects and will be removed once done.
-	in.clusterAddon.Status.Resources = newResources
-
-	return shouldRequeue, nil
+	return false, oldHelmTemplate, newHelmTemplate, nil
 }
 
-func helmTemplateAndDeleteNewClusterStack(ctx context.Context, in *templateAndApplyClusterAddonInput, name string) (bool, error) {
-	var (
-		buildTemplate []byte
-		err           error
-	)
+func helmTemplateNewClusterStack(in *templateAndApplyClusterAddonInput, name string) (newTemplate []byte, err error) {
+	var buildTemplate []byte
 
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, name)
 	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate)
 	if err != nil {
-		return false, fmt.Errorf("failed to template new helm chart: %w", err)
+		return nil, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
 
-	deletedResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, newHelmTemplate)
-	if err != nil {
-		return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
-	}
-
-	// This is for the current stage objects and will be removed once done.
-	in.clusterAddon.Status.Resources = deletedResources
-
-	return shouldRequeue, nil
+	return newHelmTemplate, nil
 }
 
 func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynamic.DynamicClient, discoveryClient *discovery.DiscoveryClient, waitCondition clusteraddon.WaitForCondition) error {
