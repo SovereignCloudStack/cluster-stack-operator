@@ -61,7 +61,7 @@ jobs:
           echo 'EOF' >> $GITHUB_ENV
 
       - name: Build and push cso image
-        uses: docker/build-push-action@94f8f8c2eec4bc3f1d78c1755580779804cb87b2 # v6
+        uses: docker/build-push-action@31159d49c0d4756269a0940a750801a1ea5d7003 # v6
         id: docker_build_release_cso
         with:
           provenance: false
