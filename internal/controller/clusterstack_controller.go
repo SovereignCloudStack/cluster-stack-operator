@@ -517,7 +517,7 @@ func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.Clust
 				return nil, "", fmt.Errorf("failed to get clusterstack from ClusterStackRelease.Name %q: %w", csr.Name, err)
 			}
 			clusterStackObjects = append(clusterStackObjects, cs)
-			mapKubernetesVersions[cs.String()] = csr.Status.KubernetesVersion
+			mapKubernetesVersions[cs.StringWithDot()] = csr.Status.KubernetesVersion
 		}
 	}
 
@@ -530,7 +530,7 @@ func getLatestReadyClusterStackRelease(clusterStackReleases []*csov1alpha1.Clust
 	sort.Sort((clusterStackObjects))
 
 	// return the latest one
-	cs := clusterStackObjects[len(clusterStackObjects)-1].String()
+	cs := clusterStackObjects[len(clusterStackObjects)-1].StringWithDot()
 	latest = &cs
 	k8sversion = mapKubernetesVersions[*latest]
 	return latest, k8sversion, nil
@@ -606,7 +606,7 @@ func getUsableClusterStackReleaseVersions(clusterStackReleases []*csov1alpha1.Cl
 				return nil, fmt.Errorf("failed to construct version from ClusterStackRelease.Name %q: %w", csr.Name, err)
 			}
 
-			usableVersions = append(usableVersions, v.String())
+			usableVersions = append(usableVersions, v.StringWithDot())
 		}
 	}
 	return usableVersions, nil
