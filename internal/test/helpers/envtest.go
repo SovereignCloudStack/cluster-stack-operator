@@ -33,6 +33,8 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/test/helpers/builder"
 	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
 	githubmocks "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client/mocks"
+	kubeclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
+	kubemocks "github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube/mocks"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/test/utils"
 	g "github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -146,12 +148,17 @@ type (
 		kind                  *kind.Provider
 		WorkloadClusterClient *kubernetes.Clientset
 		GitHubClientFactory   githubclient.Factory
+		KubeClientFactory     kubeclient.Factory
 		GitHubClient          *githubmocks.Client
+		KubeClient            *kubemocks.Client
 	}
 )
 
 // NewTestEnvironment creates a new environment spinning up a local api-server.
 func NewTestEnvironment() *TestEnvironment {
+	// initialize webhook here to be able to test the envtest install via webhookOptions
+	initializeWebhookInEnvironment()
+
 	config, err := env.Start()
 	if err != nil {
 		klog.Fatalf("unable to start env: %s", err)
@@ -172,6 +179,19 @@ func NewTestEnvironment() *TestEnvironment {
 		klog.Fatalf("unable to create manager: %s", err)
 	}
 
+	if err := (&csov1alpha1.ClusterStackWebhook{Client: mgr.GetClient()}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Fatalf("failed to set up webhook with manager for ClusterStack: %s", err)
+	}
+	if err := (&csov1alpha1.ClusterAddon{}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Fatalf("failed to set up webhook with manager for ClusterAddon: %s", err)
+	}
+	if err := (&csov1alpha1.Cluster{}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Fatalf("failed to set up webhook with manager for Cluster: %s", err)
+	}
+	if err := (&csov1alpha1.ClusterStackReleaseWebhook{Client: mgr.GetClient()}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Fatalf("failed to set up webhook with manager for ClusterStackRelease: %s", err)
+	}
+
 	// create manager pod namespace
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -184,13 +204,16 @@ func NewTestEnvironment() *TestEnvironment {
 	}
 
 	githubClient := &githubmocks.Client{}
+	kubeClient := &kubemocks.Client{}
 
 	testEnv := &TestEnvironment{
 		Manager:             mgr,
 		Client:              mgr.GetClient(),
 		Config:              mgr.GetConfig(),
 		GitHubClientFactory: githubmocks.NewGitHubFactory(githubClient),
+		KubeClientFactory:   kubemocks.NewKubeFactory(kubeClient),
 		GitHubClient:        githubClient,
+		KubeClient:          kubeClient,
 	}
 
 	if ifCreateKind() {

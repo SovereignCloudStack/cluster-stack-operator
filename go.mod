@@ -24,6 +24,7 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.0.0 // indirect
+	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/alessio/shellescape v1.4.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect

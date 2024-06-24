@@ -23,6 +23,7 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/version"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/patch"
 )
@@ -647,6 +649,226 @@ var _ = Describe("ClusterStackReconciler", func() {
 
 				return clusterStackRelease.Spec.ProviderRef == nil
 			}, timeout, interval).Should(BeTrue())
+		})
+	})
+})
+
+var _ = Describe("clusterStack validation", func() {
+	var testNs *corev1.Namespace
+
+	BeforeEach(func() {
+		var err error
+		testNs, err = testEnv.CreateNamespace(ctx, "clusterstack-validation")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		Eventually(func() error {
+			return testEnv.Cleanup(ctx, testNs)
+		}, timeout, interval).Should(BeNil())
+	})
+
+	Context("validate create", func() {
+		var clusterStack *csov1alpha1.ClusterStack
+
+		BeforeEach(func() {
+			clusterStack = &csov1alpha1.ClusterStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-stack",
+					Namespace: testNs.Name,
+				},
+				Spec: csov1alpha1.ClusterStackSpec{
+					Provider:          "docker",
+					Name:              "testclusterstack",
+					KubernetesVersion: "1.27",
+					NoProvider:        true,
+					AutoSubscribe:     false,
+					ProviderRef: &corev1.ObjectReference{
+						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+						Kind:       "DockerClusterStackReleaseTemplate",
+						Name:       "mytemplate",
+						Namespace:  testNs.Name,
+					},
+				},
+			}
+		})
+
+		AfterEach(func() {
+			Eventually(func() error {
+				return testEnv.Cleanup(ctx, clusterStack)
+			}, timeout, interval).Should(BeNil())
+		})
+
+		It("should succeed with correct spec", func() {
+			Expect(testEnv.Create(ctx, clusterStack)).To(Succeed())
+		})
+
+		It("should succeed with no provider", func() {
+			clusterStack.Spec.ProviderRef = nil
+			Expect(testEnv.Create(ctx, clusterStack)).To(Succeed())
+		})
+
+		It("should fail with a wrong version tag", func() {
+			clusterStack.Spec.Versions = append(clusterStack.Spec.Versions, "v1-alpha")
+			Expect(testEnv.Create(ctx, clusterStack)).NotTo(Succeed())
+		})
+
+		It("should fail with empty provider", func() {
+			clusterStack.Spec.Provider = ""
+			Expect(testEnv.Create(ctx, clusterStack)).NotTo(Succeed())
+		})
+
+		It("should fail with empty clusterStack name", func() {
+			clusterStack.Spec.Name = ""
+			Expect(testEnv.Create(ctx, clusterStack)).NotTo(Succeed())
+		})
+
+		It("providerRef is nil and no provider is false", func() {
+			clusterStack.Spec.ProviderRef = nil
+			clusterStack.Spec.NoProvider = false
+			Expect(testEnv.Create(ctx, clusterStack)).ToNot(Succeed())
+		})
+	})
+
+	Context("validate update", func() {
+		var (
+			clusterStack      *csov1alpha1.ClusterStack
+			key               types.NamespacedName
+			foundClusterStack csov1alpha1.ClusterStack
+		)
+
+		BeforeEach(func() {
+			key = types.NamespacedName{Namespace: testNs.Name, Name: "cluster-stack"}
+			clusterStack = &csov1alpha1.ClusterStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-stack",
+					Namespace: testNs.Name,
+				},
+				Spec: csov1alpha1.ClusterStackSpec{
+					Provider:          "docker",
+					Name:              "testclusterstack",
+					Channel:           version.ChannelStable,
+					KubernetesVersion: "1.27",
+					NoProvider:        true,
+					AutoSubscribe:     false,
+				},
+			}
+			Expect(testEnv.Create(ctx, clusterStack)).To(Succeed())
+
+			Eventually(func() bool {
+				if err := testEnv.Get(ctx, key, &foundClusterStack); err != nil {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		AfterEach(func() {
+			Eventually(func() error {
+				return testEnv.Cleanup(ctx, clusterStack)
+			}, timeout, interval).Should(BeNil())
+		})
+
+		It("should have correct specs", func() {
+			Expect(foundClusterStack.Spec.AutoSubscribe).To(Equal(false))
+			Expect(foundClusterStack.Spec.NoProvider).To(Equal(true))
+			Expect(foundClusterStack.Spec.Provider).To(Equal("docker"))
+			Expect(foundClusterStack.Spec.Name).To(Equal("testclusterstack"))
+			Expect(foundClusterStack.Spec.KubernetesVersion).To(Equal("1.27"))
+			Expect(foundClusterStack.Spec.Channel).To(Equal(version.ChannelStable))
+		})
+
+		It("Should not allow an update of ClusterStack.Spec.Provider", func() {
+			foundClusterStack.Spec.Provider = "otherprovider"
+			Expect(testEnv.Update(ctx, &foundClusterStack)).NotTo(Succeed())
+		})
+
+		It("Should not allow an update of ClusterStack.Spec.Name", func() {
+			foundClusterStack.Spec.Name = "testclusterstack2"
+			Expect(testEnv.Update(ctx, &foundClusterStack)).NotTo(Succeed())
+		})
+
+		It("Should not allow an update of ClusterStack.Spec.Channel", func() {
+			foundClusterStack.Spec.Channel = version.ChannelCustom
+			Expect(testEnv.Update(ctx, &foundClusterStack)).NotTo(Succeed())
+		})
+
+		It("Should not allow an update of ClusterStack.Spec.KubernetesVersion", func() {
+			foundClusterStack.Spec.KubernetesVersion = "1.25"
+			Expect(testEnv.Update(ctx, &foundClusterStack)).NotTo(Succeed())
+		})
+	})
+
+	Context("validate delete", func() {
+		var (
+			clusterStack      *csov1alpha1.ClusterStack
+			key               types.NamespacedName
+			foundClusterStack csov1alpha1.ClusterStack
+			cluster           clusterv1.Cluster
+		)
+
+		BeforeEach(func() {
+			key = types.NamespacedName{Namespace: testNs.Name, Name: "cluster-stack"}
+			By("creating clusterstack")
+			clusterStack = &csov1alpha1.ClusterStack{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "cluster-stack",
+					Namespace:  testNs.Name,
+					Finalizers: []string{clusterv1.ClusterFinalizer},
+				},
+				Spec: csov1alpha1.ClusterStackSpec{
+					Provider:          "docker",
+					Name:              "ferrol",
+					Channel:           version.ChannelStable,
+					KubernetesVersion: "1.27",
+					NoProvider:        true,
+					AutoSubscribe:     false,
+				},
+			}
+			Expect(testEnv.Create(ctx, clusterStack)).To(Succeed())
+
+			By("checking if clusterstack is created properly")
+			Eventually(func() error {
+				return testEnv.Get(ctx, key, &foundClusterStack)
+			}, timeout, interval).Should(BeNil())
+
+			By("creating cluster")
+			cluster = clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster",
+					Namespace: testNs.Name,
+				},
+				Spec: clusterv1.ClusterSpec{
+					Topology: &clusterv1.Topology{
+						Class: "docker-ferrol-1-27-v6",
+					},
+				},
+			}
+		})
+
+		AfterEach(func() {
+			Eventually(func() error {
+				return testEnv.Cleanup(ctx, &cluster, clusterStack)
+			}, timeout, interval).Should(BeNil())
+		})
+
+		It("should not allow delete if ClusterStack is in use by Cluster", func() {
+			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+			Expect(testEnv.Delete(ctx, clusterStack)).ToNot(Succeed())
+		})
+
+		It("should allow delete if existing Clusters reference ClusterClasses that do not follow the cluster stack naming convention", func() {
+			cluster.Spec.Topology.Class = "test-cluster-class"
+			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+
+			Expect(testEnv.Delete(ctx, clusterStack)).To(Succeed())
+		})
+
+		It("should allow delete if existing Clusters reference different ClusterClasses", func() {
+			cluster.Spec.Topology.Class = "docker-ferrol-1-25-v1"
+			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+
+			Expect(testEnv.Delete(ctx, clusterStack)).To(Succeed())
 		})
 	})
 })

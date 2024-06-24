@@ -310,7 +310,7 @@ test-integration: test-integration-workloadcluster  test-integration-github
 .PHONY: test-unit
 test-unit: $(SETUP_ENVTEST) $(GOTESTSUM) $(HELM) ## Run unit
 	@mkdir -p $(shell pwd)/.coverage
-	CREATE_KIND_CLUSTER=true KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
+	CREATE_KIND_CLUSTER=false KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
 	-covermode=atomic -coverprofile=.coverage/cover.out -p=4 ./internal/controller/...
 
 .PHONY: test-integration-workloadcluster

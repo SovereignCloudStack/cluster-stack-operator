@@ -32,6 +32,27 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-clusterstack-x-k8s-io-v1alpha1-clusteraddon
+  failurePolicy: Fail
+  name: validation.clusteraddon.clusterstack.x-k8s.io
+  rules:
+  - apiGroups:
+    - clusterstack.x-k8s.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusteraddons
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1alpha1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-clusterstack-x-k8s-io-v1alpha1-clusterstack
   failurePolicy: Fail
   name: validation.clusterstack.clusterstack.x-k8s.io
@@ -43,6 +64,27 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
+    - DELETE
     resources:
     - clusterstacks
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1alpha1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-clusterstack-x-k8s-io-v1alpha1-clusterstackrelease
+  failurePolicy: Fail
+  name: validation.clusterstackrelease.clusterstack.x-k8s.io
+  rules:
+  - apiGroups:
+    - clusterstack.x-k8s.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - DELETE
+    resources:
+    - clusterstackreleases
   sideEffects: None

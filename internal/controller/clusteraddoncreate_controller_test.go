@@ -22,6 +22,7 @@ import (
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,22 +33,16 @@ var _ = Describe("ClusterAddonCreateReconciler", func() {
 	var (
 		cluster             *clusterv1.Cluster
 		clusterStackRelease *csov1alpha1.ClusterStackRelease
-		testNs              *corev1.Namespace
-		key                 types.NamespacedName
+
+		testNs *corev1.Namespace
+		key    types.NamespacedName
 	)
 
 	BeforeEach(func() {
 		var err error
 		testNs, err = testEnv.CreateNamespace(ctx, "clusteraddoncreate-reconciler")
 		Expect(err).NotTo(HaveOccurred())
-
-		clusterStackRelease = &csov1alpha1.ClusterStackRelease{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      testClusterStackName,
-				Namespace: testNs.Name,
-			},
-		}
-		Expect(testEnv.Create(ctx, clusterStackRelease)).To(Succeed())
+		testEnv.GetLogger().Info("Namespace", "name", testNs.Name, "namespace", testNs.Namespace)
 
 		cluster = &clusterv1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
@@ -57,17 +52,30 @@ var _ = Describe("ClusterAddonCreateReconciler", func() {
 			},
 			Spec: clusterv1.ClusterSpec{
 				Topology: &clusterv1.Topology{
-					Class: testClusterStackName,
+					Class:   testClusterStackName,
+					Version: testKubernetesVersion,
 				},
 			},
 		}
 		Expect(testEnv.Create(ctx, cluster)).To(Succeed())
 
+		clusterStackRelease = &csov1alpha1.ClusterStackRelease{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testClusterStackNameV2,
+				Namespace: testNs.Name,
+			},
+		}
+		Expect(testEnv.Create(ctx, clusterStackRelease)).To(Succeed())
+
 		key = types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", cluster.Name), Namespace: testNs.Name}
+
+		testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
 	})
 
 	AfterEach(func() {
-		Expect(testEnv.Cleanup(ctx, testNs, cluster, clusterStackRelease)).To(Succeed())
+		Eventually(func() error {
+			return testEnv.Cleanup(ctx, testNs, cluster, clusterStackRelease)
+		}, timeout, interval).Should(BeNil())
 	})
 
 	Context("Basic test", func() {
