@@ -114,7 +114,7 @@ def fixup_yaml_empty_arrays(yaml_str):
 ## This should have the same versions as the Dockerfile
 if settings.get("local_mode"):
     tilt_dockerfile_header_cso = """
-    FROM docker.io/alpine/helm:3.12.2 as helm
+    FROM docker.io/alpine/helm:3.15.1 as helm
 
     FROM docker.io/library/alpine:3.18.0 as tilt
     WORKDIR /
@@ -124,7 +124,7 @@ if settings.get("local_mode"):
     """
 else:
     tilt_dockerfile_header_cso = """
-    FROM docker.io/alpine/helm:3.12.2 as helm
+    FROM docker.io/alpine/helm:3.15.1 as helm
 
     FROM docker.io/library/alpine:3.18.0 as tilt
     WORKDIR /

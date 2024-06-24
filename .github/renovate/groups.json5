@@ -1,6 +1,12 @@
 {
   packageRules: [
     {
+      "description": "disable helm image update",
+      "matchManagers": ["dockerfile"],
+      "matchDepNames": ["docker.io/alpine/helm"],
+      "enabled": false
+    },
+    {
       description: "Update Builder Image",
       groupName: "Builder Image",
       groupSlug: "cso-builder-image",
