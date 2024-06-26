@@ -44,7 +44,6 @@ import (
 	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/exp/runtime/hooks/api/v1alpha1"
 	"sigs.k8s.io/cluster-api/exp/runtime/server"
-	dockerv1beta1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -67,7 +66,6 @@ func init() {
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(csov1alpha1.AddToScheme(scheme))
-	utilruntime.Must(dockerv1beta1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
@@ -227,7 +225,7 @@ func main() {
 		CertDir: hookCertDir,
 	})
 	if err != nil {
-		setupLog.Error(err, "error creating webhook server")
+		setupLog.Error(err, "error creating hook server")
 		os.Exit(1)
 	}
 

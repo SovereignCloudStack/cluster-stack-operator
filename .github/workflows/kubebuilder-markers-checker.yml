@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - addons
   pull_request:
     branches:
       - main
-      - addons
     paths:
       - "api/**"
       - ".github/workflows/kubebuilder-markers-checker.yml"

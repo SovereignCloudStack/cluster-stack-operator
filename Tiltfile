@@ -61,8 +61,9 @@ def deploy_capi():
                 patch_args_with_extra_args("capi-kubeadm-bootstrap-system", "capi-kubeadm-bootstrap-controller-manager", kb_extra_args)
 
 def deploy_capd():
-    yaml = './capd.yaml'
-    cmd = "kubectl apply -f capd.yaml"
+    version = settings.get("capi_version")
+    capd_uri = "https://github.com/kubernetes-sigs/cluster-api/releases/download/{}/infrastructure-components-development.yaml".format(version)
+    cmd = "curl -sSL {} | {} | kubectl apply -f -".format(capd_uri, envsubst_cmd)
     local(cmd, quiet = True)
 
 def prepare_environment():
@@ -210,12 +211,6 @@ def deploy_cso():
         new_name = "cso-misc",
         labels = ["CSO"],
     )
-
-def deploy_capd():
-    yaml = './capd.yaml'
-    cmd = "kubectl apply -f capd.yaml"
-    local(cmd, quiet = True)
-
 
 def clusterstack():
     k8s_resource(objects = ["clusterstack:clusterstack"], new_name = "clusterstack", labels = ["CLUSTERSTACK"])

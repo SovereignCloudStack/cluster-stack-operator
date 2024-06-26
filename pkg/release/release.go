@@ -104,6 +104,18 @@ func New(tag, downloadPath string) (Release, bool, error) {
 	return rel, false, nil
 }
 
+// ConvertFromClusterClassToClusterStackFormat converts `docker-ferrol-1-27-v0-sha.3960147` way to
+// `docker-ferrol-1-27-v0-sha-3960147`.
+func ConvertFromClusterClassToClusterStackFormat(input string) string {
+	parts := strings.Split(input, ".")
+
+	if len(parts) == 2 {
+		return fmt.Sprintf("%s-%s", parts[0], parts[1])
+	}
+
+	return input
+}
+
 func ensureMetadata(downloadPath, metadataFileName string) (Metadata, error) {
 	// Read the metadata.yaml file from the release.
 	metadataPath := filepath.Join(downloadPath, metadataFileName)
@@ -199,18 +211,6 @@ func (r *Release) Validate() error {
 		return fmt.Errorf("failed to validate metadata: %w", err)
 	}
 	return nil
-}
-
-// ConvertFromClusterClassToClusterStackFormat converts `docker-ferrol-1-27-v0-sha.3960147` way to
-// `docker-ferrol-1-27-v0-sha-3960147`.
-func ConvertFromClusterClassToClusterStackFormat(input string) string {
-	parts := strings.Split(input, ".")
-
-	if len(parts) == 2 {
-		return fmt.Sprintf("%s-%s", parts[0], parts[1])
-	}
-
-	return input
 }
 
 // clusterAddonChartName returns the helm chart name for cluster addon.

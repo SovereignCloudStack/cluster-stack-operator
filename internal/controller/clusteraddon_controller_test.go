@@ -61,7 +61,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			},
 		}
 
-		testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
+		testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
 	})
 
 	AfterEach(func() {
@@ -240,7 +240,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			}, timeout, interval).Should(BeTrue())
 
 			By("checking Update method was called")
-			Expect(testEnv.KubeClient.AssertCalled(GinkgoT(), "Apply", mock.Anything, mock.Anything, mock.Anything)).To(BeTrue())
+			Expect(testEnv.KubeClient.AssertCalled(GinkgoT(), "Apply", mock.Anything, mock.Anything, mock.Anything, mock.Anything)).To(BeTrue())
 		})
 
 		It("should not call update if the ClusterAddon version does not change in the ClusterClass update", func() {

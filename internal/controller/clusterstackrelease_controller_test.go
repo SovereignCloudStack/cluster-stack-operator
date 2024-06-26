@@ -311,7 +311,7 @@ var _ = Describe("ClusterStackRelease validation", func() {
 				},
 			}
 
-			testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
+			testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
 		})
 
 		AfterEach(func() {

@@ -74,6 +74,11 @@ import (
 
 const clusterAddonNamespace = "kube-system"
 
+const (
+	beforeClusterUpgradeHook     = "BeforeClusterUpgrade"
+	afterControlPlaneInitialized = "AfterControlPlaneInitialized"
+)
+
 // RestConfigSettings contains Kubernetes rest config settings.
 type RestConfigSettings struct {
 	QPS   float32
@@ -344,8 +349,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 		if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
 			if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
-				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages["BeforeClusterUpgrade"]))
-				for i, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
+				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages[beforeClusterUpgradeHook]))
+				for i, stage := range clusterAddonConfig.AddonStages[beforeClusterUpgradeHook] {
 					clusterAddon.Status.Stages[i].Name = stage.Name
 					clusterAddon.Status.Stages[i].Action = stage.Action
 					clusterAddon.Status.Stages[i].Phase = csov1alpha1.StagePhasePending
@@ -369,9 +374,9 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// In case the Kubernetes version stayed the same during an upgrade, the hook server does not trigger and
 	// we just take the Helm charts that are supposed to be installed in the BeforeClusterUpgrade hook and apply them.
 	if oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
-		clusterAddon.Spec.Hook = "BeforeClusterUpgrade"
+		clusterAddon.Spec.Hook = beforeClusterUpgradeHook
 
-		for _, stage := range clusterAddonConfig.AddonStages["BeforeClusterUpgrade"] {
+		for _, stage := range clusterAddonConfig.AddonStages[beforeClusterUpgradeHook] {
 			shouldRequeue, err := r.executeStage(ctx, stage, in)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed to execute stage: %w", err)
@@ -445,8 +450,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		}
 	}
 
-	if clusterAddon.Spec.Hook == "AfterControlPlaneInitialized" || clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
-		if clusterAddon.Spec.Hook == "BeforeClusterUpgrade" {
+	if clusterAddon.Spec.Hook == afterControlPlaneInitialized || clusterAddon.Spec.Hook == beforeClusterUpgradeHook {
+		if clusterAddon.Spec.Hook == beforeClusterUpgradeHook {
 			// create the list of old release objects
 			oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
 			if err != nil {
@@ -570,9 +575,9 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 	)
 
 	if in.clusterAddon.HasStageAnnotation(csov1alpha1.StageAnnotationValueCreated) {
-		hook = "AfterControlPlaneInitialized"
+		hook = afterControlPlaneInitialized
 	} else {
-		hook = "BeforeClusterUpgrade"
+		hook = beforeClusterUpgradeHook
 	}
 
 	for _, stage := range clusterAddonConfig.AddonStages[hook] {
@@ -1332,7 +1337,7 @@ func clusterToClusterAddon(_ context.Context) handler.MapFunc {
 
 func unTarContent(src, dst string) error {
 	// Create the target directory if it doesn't exist
-	if err := os.MkdirAll(dst, os.ModePerm); err != nil {
+	if err := os.MkdirAll(dst, os.ModePerm); err != nil { //nolint:gosec // ignore permissions
 		return fmt.Errorf("%q: creating directory: %w", dst, err)
 	}
 
@@ -1366,12 +1371,12 @@ func unTarContent(src, dst string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// Create directories
-			if err := os.MkdirAll(targetPath, os.ModePerm); err != nil {
+			if err := os.MkdirAll(targetPath, os.ModePerm); err != nil { //nolint:gosec // ignore permissions
 				return fmt.Errorf("%q: creating directory: %w", targetPath, err)
 			}
 		case tar.TypeReg:
 			// Create regular files
-			if err := os.MkdirAll(filepath.Dir(targetPath), os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Dir(targetPath), os.ModePerm); err != nil { //nolint:gosec // ignore permissions
 				return fmt.Errorf("%q: creating directory: %w", filepath.Dir(targetPath), err)
 			}
 
