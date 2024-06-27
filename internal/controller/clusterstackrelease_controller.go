@@ -288,7 +288,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 		return false, fmt.Errorf("template is empty")
 	}
 
-	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources, true)
+	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources)
 	if err != nil {
 		conditions.MarkFalse(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply")
 		return false, fmt.Errorf("failed to apply cluster class helm chart: %w", err)

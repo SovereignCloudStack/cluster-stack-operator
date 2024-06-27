@@ -37,7 +37,7 @@ type kube struct {
 
 // Client has all the meathod for helm chart kube operation.
 type Client interface {
-	Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource, shouldDelete bool) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
+	Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
 	Delete(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
 
 	ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplate []byte) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
@@ -163,7 +163,7 @@ func (k *kube) DeleteNewClusterStack(ctx context.Context, template []byte) (newR
 	return newResources, shouldRequeue, nil
 }
 
-func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource, shouldDelete bool) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
+func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
 	logger := log.FromContext(ctx)
 
 	objs, err := parseK8sYaml(template)
@@ -212,32 +212,29 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 		newResources = append(newResources, resource)
 	}
 
-	// TODO: cleanup shouldDelete
-	if shouldDelete {
-		// make a diff between new objs and oldResources to find out
-		// a) if an object is in oldResources and synced and not in new objs, then delete should be attempted
-		// then, all objs should be applied by create or update
-		// at the end, we should delete objects that are supposed to be deleted
-		for _, resource := range resourcesToBeDeleted(oldResources, objs) {
-			// call the function and get dynamic.ResourceInterface
-			// getDynamicResourceInterface
-			logger.Info("resource are being deleted", "kind", resource.Kind, "name", resource.Name, "namespace", resource.Namespace)
+	// make a diff between new objs and oldResources to find out
+	// a) if an object is in oldResources and synced and not in new objs, then delete should be attempted
+	// then, all objs should be applied by create or update
+	// at the end, we should delete objects that are supposed to be deleted
+	for _, resource := range resourcesToBeDeleted(oldResources, objs) {
+		// call the function and get dynamic.ResourceInterface
+		// getDynamicResourceInterface
+		logger.Info("resource are being deleted", "kind", resource.Kind, "name", resource.Name, "namespace", resource.Namespace)
 
-			dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
-			if err != nil {
-				return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
-			}
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
+		}
 
-			if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				reterr := fmt.Errorf("failed to delete object: %w", err)
-				logger.Error(reterr, "failed to delete object", "obj", resource.GroupVersionKind(), "namespacedName", resource.NamespacedName())
+		if err := dr.Delete(ctx, resource.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			reterr := fmt.Errorf("failed to delete object: %w", err)
+			logger.Error(reterr, "failed to delete object", "obj", resource.GroupVersionKind(), "namespacedName", resource.NamespacedName())
 
-				// append resource to status and requeue again to be able to retry deletion
-				resource.Status = csov1alpha1.ResourceStatusNotSynced
-				resource.Error = reterr.Error()
-				newResources = append(newResources, resource)
-				shouldRequeue = true
-			}
+			// append resource to status and requeue again to be able to retry deletion
+			resource.Status = csov1alpha1.ResourceStatusNotSynced
+			resource.Error = reterr.Error()
+			newResources = append(newResources, resource)
+			shouldRequeue = true
 		}
 	}
 
