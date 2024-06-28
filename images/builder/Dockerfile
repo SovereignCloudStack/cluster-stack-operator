@@ -32,9 +32,8 @@ RUN apk add --no-cache curl && \
 FROM cgr.dev/chainguard/wolfi-base:latest as wolfi
 
 # update: datasource=github-tags depName=kubernetes-sigs/cluster-api
-ARG CLUSTERCTL_VERSION="v1.6.2"
-# update: datasource=github-tags depName=helm/helm
-ENV HELM_VERSION="v3.14.1"
+ARG CLUSTERCTL_VERSION="v1.7.2"
+ENV HELM_VERSION="v3.15.1"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
 ARG KIND_VERSION="v0.20.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
@@ -79,8 +78,6 @@ FROM docker.io/library/golang:1.21.6-bullseye
 
 # update: datasource=github-tags depName=adrienverge/yamllint versioning=semver
 ENV YAMLLINT_VERSION="v1.35.1"
-# update: datasource=github-tags depName=opt-nc/yamlfixer versioning=semver
-ENV YAMLFIXER_VERSION="0.9.15"
 
 # hadolint ignore=DL3008
 RUN apt-get update && \
@@ -91,7 +88,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     pip install --no-cache-dir \
     yamllint==${YAMLLINT_VERSION} \
-    yamlfixer-opt-nc==${YAMLFIXER_VERSION}
 
 COPY --from=wolfi /usr/bin/clusterctl /usr/bin/clusterctl
 COPY --from=wolfi /usr/bin/controller-gen /usr/bin/controller-gen
