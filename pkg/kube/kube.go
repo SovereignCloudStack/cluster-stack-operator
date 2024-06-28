@@ -38,7 +38,10 @@ type kube struct {
 // Client has all the meathod for helm chart kube operation.
 type Client interface {
 	Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
-	Delete(template []byte) error
+	Delete(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
+
+	ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplate []byte) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
+	DeleteNewClusterStack(ctx context.Context, template []byte) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error)
 }
 
 // Factory creates new fake kube client factories.
@@ -62,6 +65,102 @@ func (*factory) NewClient(namespace string, resCfg *rest.Config) Client {
 		Namespace:  namespace,
 		RestConfig: resCfg,
 	}
+}
+
+func (k *kube) ApplyNewClusterStack(ctx context.Context, oldTemplate, newTemplate []byte) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
+	logger := log.FromContext(ctx)
+
+	oldObjects, err := parseK8sYaml(oldTemplate)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to parse old cluster stack template: %w", err)
+	}
+
+	newObjects, err := parseK8sYaml(newTemplate)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to parse new cluster stack template: %w", err)
+	}
+
+	for _, newObject := range newObjects {
+		if err := setLabel(newObject, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
+			return nil, false, fmt.Errorf("error setting label: %w", err)
+		}
+
+		resource := csov1alpha1.NewResourceFromUnstructured(newObject)
+
+		// call the function and get dynamic.ResourceInterface
+		// getDynamicResourceInterface
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, newObject.GroupVersionKind())
+		if err != nil {
+			reterr := fmt.Errorf("failed to get dynamic resource interface: %w", err)
+			logger.Error(reterr, "failed to get dynamic resource interface", "obj", newObject.GetObjectKind().GroupVersionKind())
+			shouldRequeue = true
+			continue
+		}
+
+		if _, err := dr.Apply(ctx, newObject.GetName(), newObject, metav1.ApplyOptions{FieldManager: "kubectl", Force: true}); err != nil {
+			reterr := fmt.Errorf("failed to apply object: %w", err)
+			resource.Error = reterr.Error()
+			resource.Status = csov1alpha1.ResourceStatusNotSynced
+			logger.Error(reterr, "failed to apply object", "obj", newObject.GetObjectKind().GroupVersionKind(), "name", newObject.GetName(), "namespace", newObject.GetNamespace())
+			shouldRequeue = true
+		}
+
+		resource.Status = csov1alpha1.ResourceStatusSynced
+		newResources = append(newResources, resource)
+	}
+
+	for _, object := range resourcesToBeDeletedFromUnstructuredObjects(oldObjects, newObjects) {
+		resource := csov1alpha1.NewResourceFromUnstructured(object)
+
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
+		}
+
+		if err := dr.Delete(ctx, object.GetName(), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			reterr := fmt.Errorf("failed to delete object: %w", err)
+			logger.Error(reterr, "failed to delete object", "obj", object.GroupVersionKind(), "namespacedName", fmt.Sprintf("%s/%s", object.GetNamespace(), object.GetName()))
+			// append resource to status and requeue again to be able to retry deletion
+			resource.Status = csov1alpha1.ResourceStatusNotSynced
+			resource.Error = reterr.Error()
+			newResources = append(newResources, resource)
+			shouldRequeue = true
+		}
+	}
+
+	return newResources, shouldRequeue, nil
+}
+
+func (k *kube) DeleteNewClusterStack(ctx context.Context, template []byte) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
+	objects, err := parseK8sYaml(template)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to parse new cluster stack template: %w", err)
+	}
+
+	for _, object := range objects {
+		resource := csov1alpha1.NewResourceFromUnstructured(object)
+
+		if err := setLabel(object, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
+			return nil, false, fmt.Errorf("error setting label: %w", err)
+		}
+
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, object.GroupVersionKind())
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
+		}
+
+		if err := dr.Delete(ctx, object.GetName(), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			reterr := fmt.Errorf("failed to delete object %q: %w", object.GetObjectKind().GroupVersionKind(), err)
+			resource.Status = csov1alpha1.ResourceStatusNotSynced
+			resource.Error = reterr.Error()
+			shouldRequeue = true
+		}
+
+		resource.Status = csov1alpha1.ResourceStatusSynced
+		newResources = append(newResources, resource)
+	}
+
+	return newResources, shouldRequeue, nil
 }
 
 func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
@@ -90,7 +189,7 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 
 		// call the function and get dynamic.ResourceInterface
 		// getDynamicResourceInterface
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, obj.GroupVersionKind())
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, obj.GroupVersionKind())
 		if err != nil {
 			reterr := fmt.Errorf("failed to get dynamic resource interface: %w", err)
 			resource.Error = reterr.Error()
@@ -120,8 +219,9 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 	for _, resource := range resourcesToBeDeleted(oldResources, objs) {
 		// call the function and get dynamic.ResourceInterface
 		// getDynamicResourceInterface
+		logger.Info("resource are being deleted", "kind", resource.Kind, "name", resource.Name, "namespace", resource.Namespace)
 
-		dr, err := getDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
+		dr, err := GetDynamicResourceInterface(k.Namespace, k.RestConfig, resource.GroupVersionKind())
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to get dynamic resource interface: %w", err)
 		}
@@ -141,21 +241,35 @@ func (k *kube) Apply(ctx context.Context, template []byte, oldResources []*csov1
 	return newResources, shouldRequeue, nil
 }
 
-func (k *kube) Delete(template []byte) error {
+func (k *kube) Delete(_ context.Context, template []byte, oldResources []*csov1alpha1.Resource) (newResources []*csov1alpha1.Resource, shouldRequeue bool, err error) {
 	clientset, err := kubernetes.NewForConfig(k.RestConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create clientset: %w", err)
+		return nil, false, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
 	objs, err := parseK8sYaml(template)
 	if err != nil {
-		return fmt.Errorf("couldn't parse k8s yaml: %w", err)
+		return nil, false, fmt.Errorf("couldn't parse k8s yaml: %w", err)
 	}
 
+	resourceMap := getResourceMap(oldResources)
 	for _, obj := range objs {
+		oldResource, found := resourceMap[types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}]
+
+		// do nothing if synced
+		if found && oldResource.Status == csov1alpha1.ResourceStatusSynced {
+			newResources = append(newResources, oldResource)
+			continue
+		}
+
+		if err := setLabel(obj, ObjectLabelKeyOwned, ObjectLabelValueOwned); err != nil {
+			return nil, false, fmt.Errorf("error setting label: %w", err)
+		}
+
 		if err := deleteObject(clientset, k.Namespace, k.RestConfig, obj); err != nil {
-			return fmt.Errorf("failed to delete object %q: %w", obj.GetObjectKind().GroupVersionKind(), err)
+			return nil, true, fmt.Errorf("failed to delete object %q: %w", obj.GetObjectKind().GroupVersionKind(), err)
 		}
 	}
-	return nil
+
+	return newResources, shouldRequeue, nil
 }

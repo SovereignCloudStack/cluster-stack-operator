@@ -27,6 +27,42 @@ const (
 )
 
 const (
+	// EvaluatedCELCondition reports on whether the CEL expression is evaluated properly.
+	EvaluatedCELCondition clusterv1.ConditionType = "EvaluatedCEL"
+
+	// FailedToEvaluatePreConditionReason is used when some pre CEL expression have been failed to evaluate.
+	FailedToEvaluatePreConditionReason = "FailedToEvaluatePreCondition"
+
+	// FailedToEvaluatePostConditionReason is used when some post CEL expression have been failed to evaluate.
+	FailedToEvaluatePostConditionReason = "FailedToEvaluatePostCondition"
+)
+
+const (
+	// HelmChartFoundCondition reports when mentioned helm chart is present in the cluster addon tar archive.
+	HelmChartFoundCondition = "HelmChartFound"
+
+	// HelmChartMissingReason is used when mentioned helm chart is missing in the cluster addon tar archive.
+	HelmChartMissingReason = "HelmChartMissing"
+)
+
+const (
+	// HelmChartTemplatedCondition reports on whether the relevant helm chart has been templated properly.
+	HelmChartTemplatedCondition clusterv1.ConditionType = "HelmChartTemplated"
+
+	// TemplateOldClusterStackOverwriteFailedReason is used when old cluster stack overwrite.yaml is wrong.
+	TemplateOldClusterStackOverwriteFailedReason = "TemplateOldClusterStackOverwriteFailed"
+
+	// TemplateOldClusterStackFailedReason is used when there is a issue doing helm template for the old cluster stack.
+	TemplateOldClusterStackFailedReason = "TemplateOldClusterStackFailed"
+
+	// TemplateNewClusterStackOverwriteFailedReason is used when new cluster stack overwrite.yaml is wrong.
+	TemplateNewClusterStackOverwriteFailedReason = "TemplateNewClusterStackOverwriteFailed"
+
+	// TemplateNewClusterStackFailedReason is used when there is a issue doing helm template for the new cluster stack.
+	TemplateNewClusterStackFailedReason = "TemplateNewClusterStackFailed"
+)
+
+const (
 	// HelmChartAppliedCondition reports on whether the relevant helm chart has been applied.
 	HelmChartAppliedCondition clusterv1.ConditionType = "HelmChartApplied"
 
@@ -35,6 +71,22 @@ const (
 
 	// ObjectsApplyingOngoingReason is used when the objects are still being applied.
 	ObjectsApplyingOngoingReason = "ObjectsApplyingOngoing"
+)
+
+const (
+	// HookServerReadyCondition reports on whether hook server is ready or not.
+	HookServerReadyCondition clusterv1.ConditionType = "HookServerReady"
+
+	// HookServerUnresponsiveReason is used when hook server don't update the clusterAddon.Spec.Hook.
+	HookServerUnresponsiveReason = "HookServerUnresponsive"
+)
+
+const (
+	// HelmChartDeletedCondition reports on whether the relevant helm chart has been applied.
+	HelmChartDeletedCondition clusterv1.ConditionType = "HelmChartDeleted"
+
+	// FailedToDeleteObjectsReason is used when some objects have been failed to delete.
+	FailedToDeleteObjectsReason = "FailedToDeleteObjects"
 )
 
 const (

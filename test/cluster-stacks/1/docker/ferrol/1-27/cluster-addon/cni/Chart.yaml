@@ -1,0 +1,9 @@
+apiVersion: v2
+type: application
+description: CNI chart for kind
+name: CNI
+version: '0'
+maintainers:
+  - name: Syself
+    email: info@syself.com
+    url: https://github.com/syself

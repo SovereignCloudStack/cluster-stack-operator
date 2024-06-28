@@ -37,6 +37,11 @@ const (
 	testClusterStackName   = "docker-ferrol-1-27-v1"
 	testClusterStackNameV2 = "docker-ferrol-1-27-v2"
 	testClusterStackNameV3 = "docker-ferrol-1-27-v3"
+
+	// cluster stack.
+	testNewWayClusterStackName = "docker-ferrol-1-27-v0-sha-hipstsw"
+	// cluster class.
+	testNewWayClusterClassName = "docker-ferrol-1-27-v0-sha.hipstsw"
 )
 
 func TestControllers(t *testing.T) {
