@@ -238,7 +238,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			if clusterAddon.Spec.Version != metadata.Versions.Components.ClusterAddon {
 				clusterAddon.Status.Ready = false
 
-				shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in, true)
+				shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in)
 				if err != nil {
 					conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply: %s", err.Error())
 					return ctrl.Result{}, fmt.Errorf("failed to apply helm chart: %w", err)
@@ -273,7 +273,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		// if condition is false we have not yet successfully applied the helm chart
 		if conditions.IsFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition) {
-			shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in, true)
+			shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in)
 			if err != nil {
 				conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply: %s", err.Error())
 				return ctrl.Result{}, fmt.Errorf("failed to apply helm chart: %w", err)
@@ -718,7 +718,7 @@ func (r *ClusterAddonReconciler) getAddonStagesInput(restConfig *rest.Config, cl
 	return addonStages, nil
 }
 
-func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput, shouldDelete bool) (bool, error) {
+func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx context.Context, in *templateAndApplyClusterAddonInput) (bool, error) {
 	clusterAddonChart := in.clusterAddonChartPath
 	var shouldRequeue bool
 
@@ -734,7 +734,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 
 	kubeClient := r.KubeClientFactory.NewClient(clusterAddonNamespace, in.restConfig)
 
-	newResources, shouldRequeue, err := kubeClient.Apply(ctx, helmTemplate, in.clusterAddon.Status.Resources, shouldDelete)
+	newResources, shouldRequeue, err := kubeClient.Apply(ctx, helmTemplate, in.clusterAddon.Status.Resources)
 	if err != nil {
 		return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
 	}

@@ -69,7 +69,7 @@ var _ = Describe("ClusterAddonCreateReconciler", func() {
 
 		key = types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", cluster.Name), Namespace: testNs.Name}
 
-		testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
+		testEnv.KubeClient.On("Apply", mock.Anything, mock.Anything, mock.Anything).Return([]*csov1alpha1.Resource{}, false, nil)
 	})
 
 	AfterEach(func() {

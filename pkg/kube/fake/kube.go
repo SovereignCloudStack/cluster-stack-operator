@@ -41,7 +41,7 @@ func NewFactory() kubeclient.Factory {
 }
 
 // Apply applies the given yaml object.
-func (*kube) Apply(_ context.Context, _ []byte, _ []*csov1alpha1.Resource, _ bool) (_ []*csov1alpha1.Resource, _ bool, _ error) {
+func (*kube) Apply(_ context.Context, _ []byte, _ []*csov1alpha1.Resource) (_ []*csov1alpha1.Resource, _ bool, _ error) {
 	return nil, false, nil
 }
 
