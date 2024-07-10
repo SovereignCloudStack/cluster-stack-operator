@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
-	github.com/google/cel-go v0.19.0
+	github.com/google/cel-go v0.20.1
 	github.com/google/go-github/v52 v52.0.0
 	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
@@ -17,6 +17,7 @@ require (
 	k8s.io/cli-runtime v0.29.3
 	k8s.io/client-go v0.29.3
 	k8s.io/klog/v2 v2.110.1
+	oras.land/oras-go/v2 v2.5.0
 	sigs.k8s.io/cluster-api v1.7.2
 	sigs.k8s.io/cluster-api/test v1.7.2
 	sigs.k8s.io/controller-runtime v0.17.5
@@ -35,6 +36,8 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
