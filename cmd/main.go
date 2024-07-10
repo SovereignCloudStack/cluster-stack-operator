@@ -18,6 +18,7 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -31,6 +32,7 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/fake"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/github"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/oci"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/csoversion"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/utillog"
@@ -83,6 +85,7 @@ var (
 	logLevel                       string
 	releaseDir                     string
 	localMode                      bool
+	source                         string
 	qps                            float64
 	burst                          int
 	hookPort                       int
@@ -101,7 +104,8 @@ func main() {
 	flag.IntVar(&clusterAddonConcurrency, "clusteraddon-concurrency", 1, "Number of ClusterAddons to process simultaneously")
 	flag.StringVar(&logLevel, "log-level", "info", "Specifies log level. Options are 'debug', 'info' and 'error'")
 	flag.StringVar(&releaseDir, "release-dir", "/tmp/downloads/", "Specify release directory for cluster-stack releases")
-	flag.BoolVar(&localMode, "local", false, "Enable local mode where no release assets will be downloaded from a remote Git repository. Useful for implementing cluster stacks.")
+	flag.BoolVar(&localMode, "local", false, "Enable local mode where no release assets will be downloaded from a remote repository. Useful for implementing cluster stacks.")
+	flag.StringVar(&source, "source", "github", "Specifies the source from which release assets would be downloaded. Allowed sources are 'github' and 'oci'")
 	flag.Float64Var(&qps, "qps", 50, "Enable custom query per second for kubernetes API server")
 	flag.IntVar(&burst, "burst", 100, "Enable custom burst defines how many queries the API server will accept before enforcing the limit established by qps")
 	flag.IntVar(&hookPort, "hook-port", 9442, "hook server port")
@@ -150,7 +154,15 @@ func main() {
 	if localMode {
 		assetsClientFactory = fake.NewFactory()
 	} else {
-		assetsClientFactory = github.NewFactory()
+		switch source {
+		case "oci":
+			assetsClientFactory = oci.NewFactory()
+		case "github":
+			assetsClientFactory = github.NewFactory()
+		default:
+			setupLog.Error(errors.New("invalid asset source"), "no valid source specified, allowed sources are 'github' and 'oci'")
+			os.Exit(1)
+		}
 	}
 
 	restConfig := mgr.GetConfig()
