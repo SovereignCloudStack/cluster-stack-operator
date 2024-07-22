@@ -444,8 +444,8 @@ func (r *ClusterStackReconciler) getExistingClusterStackReleases(ctx context.Con
 
 	for i := range csrList.Items {
 		csr := csrList.Items[i]
-		for i := range csr.GetOwnerReferences() {
-			ownerRef := csr.GetOwnerReferences()[i]
+		for j := range csr.GetOwnerReferences() {
+			ownerRef := csr.GetOwnerReferences()[j]
 			if matchesOwnerRef(&ownerRef, clusterStack) {
 				existingClusterStackReleases = append(existingClusterStackReleases, &csrList.Items[i])
 				break
