@@ -405,18 +405,6 @@ else
 	GO111MODULE=on golangci-lint run -v --fix
 endif
 
-.PHONY: format-yaml
-format-yaml: ## Lint YAML files
-ifeq ($(BUILD_IN_CONTAINER),true)
-	docker run  --rm -t -i \
-		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/cluster-stack-operator$(MOUNT_FLAGS) \
-		$(BUILDER_IMAGE):$(BUILDER_IMAGE_VERSION) $@;
-else
-	yamlfixer --version
-	yamlfixer -c .yamllint.yaml .
-endif
-
 ##@ Lint
 ########
 # Lint #
@@ -502,7 +490,7 @@ endif
 lint: lint-golang lint-yaml lint-dockerfile lint-links ## Lint Codebase
 
 .PHONY: format
-format: format-golang format-yaml ## Format Codebase
+format: format-golang ## Format Codebase
 
 .PHONY: generate
 generate: generate-manifests generate-go-deepcopy generate-modules ## Generate Files
