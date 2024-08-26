@@ -1,4 +1,6 @@
-# Develop Cluster Stack Operator
+# Contributing
+
+## Develop Cluster Stack Operator
 
 
 Developing our operator is quite easy. First, you need to install some base requirements: Docker and Go. Second, you need to configure your environment variables. Then you can start developing with the local Kind cluster and the Tilt UI to create a workload cluster that is already pre-configured.
