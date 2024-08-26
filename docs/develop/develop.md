@@ -11,9 +11,7 @@ Developing our operator is quite easy. First, you need to install some base requ
 
 ## Developing with Tilt
 
-<p align="center">
-<img alt="tilt" src="../pics/tilt.png" width="800px" />
-</p>
+![Tilt](../pics/tilt.png)
 
 Operator development requires a lot of iteration, and the “build, tag, push, update deployment” workflow can be very tedious. Tilt makes this process much simpler by watching for updates and automatically building and deploying them. To build a kind cluster and to start Tilt, run:
 
