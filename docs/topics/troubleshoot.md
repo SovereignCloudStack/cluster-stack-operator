@@ -1,5 +1,4 @@
-
-## Troubleshooting
+# Troubleshooting
 
 Check the latest events:
 
@@ -10,7 +9,7 @@ kubectl get events -A  --sort-by=.lastTimestamp
 Check the conditions:
 
 ```shell
-go run github.com/guettli/check-conditions@latest all 
+go run github.com/guettli/check-conditions@latest all
 ```
 
 Check with `clusterctl`:
