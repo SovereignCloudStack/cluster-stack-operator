@@ -1,5 +1,3 @@
 # Quickstart
 
-Currently, there is a [demo](https://github.com/SovereignCloudStack/cluster-stacks-demo) that can be used to see how the Cluster Stack approach can work. It uses the Docker Provider Integration for Cluster API.
-
-A proper quickstart guide will follow as soon as the OpenStack Provider Integration is completed.
+The Cluster Stack Operator (CSO) is integrated into the Openstack Provider of [Cluster Stacks](https://github.com/SovereignCloudStack/cluster-stacks). You can see how it is used in the correspoding [Quickstart Documentation](../../cluster-stacks/providers/openstack/quickstart.md) of Cluster Stacks.
