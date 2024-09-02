@@ -298,8 +298,23 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// multi-stage cluster addon flow
 	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
 	if err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+		conditions.MarkFalse(
+			clusterAddon,
+			csov1alpha1.ClusterAddonConfigValidatedCondition,
+			csov1alpha1.ParsingClusterAddonConfigFailedReason,
+			clusterv1.ConditionSeverityError,
+			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
+		)
+
+		record.Warnf(
+			clusterAddon,
+			csov1alpha1.ParsingClusterAddonConfigFailedReason,
+			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
+		)
+
+		return reconcile.Result{}, nil
 	}
+	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterAddonConfigValidatedCondition)
 
 	// clusteraddon.yaml in the release.
 	clusterAddonConfig, err := clusteraddon.ParseConfig(in.clusterAddonConfigPath)
