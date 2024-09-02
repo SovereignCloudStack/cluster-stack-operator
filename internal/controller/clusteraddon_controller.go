@@ -771,26 +771,31 @@ check:
 		// If WaitForPreCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPreCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
-			logger.V(1).Info("starting to evaluate pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPreCondition); err != nil {
-				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
-					conditions.MarkFalse(
-						in.clusterAddon,
-						csov1alpha1.EvaluatedCELCondition,
-						csov1alpha1.FailedToEvaluatePreConditionReason,
-						clusterv1.ConditionSeverityInfo,
-						"failed to successfully evaluate pre condition: %q: %s", stage.Name, err.Error(),
-					)
+			logger.V(1).Info("starting to evaluate pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook, "preCondition", stage.WaitForPostCondition.Conditions)
+			eval, shouldReturn, err := getDynamicResourceAndEvaluateCEL(ctx, in, stage.WaitForPreCondition)
+			if err != nil {
+				in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
+				return false, fmt.Errorf("failed to evaluate CEL expression for pre-condition: %w", err)
+			}
+			if shouldReturn {
+				in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
+				return false, nil
+			}
 
-					in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
+			if !eval {
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.EvaluatedCELCondition,
+					csov1alpha1.EvaluateCELConditionFailedReason,
+					clusterv1.ConditionSeverityInfo,
+					"CEL expression: %s is false", stage.WaitForPreCondition.Conditions,
+				)
 
-					return true, nil
-				}
-				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for pre condition: %w", err)
+				return true, nil
 			}
 
 			conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
-			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("finished evaluating pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook, "preCondition", stage.WaitForPreCondition.Conditions)
 		}
 
 		in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseApplyingOrDeleting)
@@ -896,24 +901,31 @@ check:
 		// If WaitForPostCondition is mentioned.
 		if !reflect.DeepEqual(stage.WaitForPostCondition, clusteraddon.WaitForCondition{}) {
 			// Evaluate the condition.
-			logger.V(1).Info("starting to evaluate post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPostCondition); err != nil {
-				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
-					conditions.MarkFalse(
-						in.clusterAddon,
-						csov1alpha1.EvaluatedCELCondition,
-						csov1alpha1.FailedToEvaluatePostConditionReason,
-						clusterv1.ConditionSeverityInfo,
-						"failed to successfully evaluate post condition: %q: %s", stage.Name, err.Error(),
-					)
+			logger.V(1).Info("starting to evaluate post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook, "postCondition", stage.WaitForPostCondition.Conditions)
+			eval, shouldReturn, err := getDynamicResourceAndEvaluateCEL(ctx, in, stage.WaitForPostCondition)
+			if err != nil {
+				in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
+				return false, fmt.Errorf("failed to evaluate CEL expression for post-condition: %w", err)
+			}
+			if shouldReturn {
+				in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
+				return false, nil
+			}
 
-					return true, nil
-				}
-				return false, fmt.Errorf("failed to get dynamic resource and evaluate cel expression for post condition: %w", err)
+			if !eval {
+				conditions.MarkFalse(
+					in.clusterAddon,
+					csov1alpha1.EvaluatedCELCondition,
+					csov1alpha1.EvaluateCELConditionFailedReason,
+					clusterv1.ConditionSeverityInfo,
+					"CEL expression: %s is false", stage.WaitForPostCondition.Conditions,
+				)
+
+				return true, nil
 			}
 
 			conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
-			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+			logger.V(1).Info("finished evaluating post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook, "postCondition", stage.WaitForPostCondition.Conditions)
 		}
 
 		in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseDone)
@@ -1100,12 +1112,12 @@ func helmTemplateNewClusterStack(in *templateAndApplyClusterAddonInput, name str
 	return newHelmTemplate, nil
 }
 
-func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynamic.DynamicClient, discoveryClient *discovery.DiscoveryClient, waitCondition clusteraddon.WaitForCondition) error {
+func getDynamicResourceAndEvaluateCEL(ctx context.Context, in *templateAndApplyClusterAddonInput, waitCondition clusteraddon.WaitForCondition) (eval, shouldReturn bool, err error) {
 	evalMap := make(map[string]interface{})
 
 	env, err := cel.NewEnv()
 	if err != nil {
-		return fmt.Errorf("environment creation error: %w", err)
+		return false, false, fmt.Errorf("environment creation error: %w", err)
 	}
 
 	for _, object := range waitCondition.Objects {
@@ -1113,18 +1125,33 @@ func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynami
 			cel.Variable(object.Key, celtypes.NewMapType(cel.StringType, cel.AnyType)),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to extend the current cel environment with %q: %w", object.Key, err)
+			return false, false, fmt.Errorf("failed to extend the current cel environment with %q: %w", object.Key, err)
 		}
 	}
 
 	ast, iss := env.Compile(waitCondition.Conditions)
 	if !errors.Is(iss.Err(), nil) {
-		return fmt.Errorf("failed to compile cel expression: %q: %w", waitCondition.Conditions, err)
+		conditions.MarkFalse(
+			in.clusterAddon,
+			csov1alpha1.EvaluatedCELCondition,
+			csov1alpha1.CompileCELExpressionFailedReason,
+			clusterv1.ConditionSeverityError,
+			"failed to compile CEL expression: %s, %s", waitCondition.Conditions, iss.Err().Error(),
+		)
+
+		record.Warnf(
+			in.clusterAddon,
+			csov1alpha1.CompileCELExpressionFailedReason,
+			"failed to compile CEL expression: %s, %s", waitCondition.Conditions, iss.Err(),
+		)
+
+		return false, true, nil
 	}
+	conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
 
 	prg, err := env.Program(ast)
 	if err != nil {
-		return fmt.Errorf("failed to generate an evaluable instance of the Ast within the environment: %w", err)
+		return false, false, fmt.Errorf("failed to generate an evaluable instance of the Ast within the environment: %w", err)
 	}
 
 	for _, object := range waitCondition.Objects {
@@ -1141,17 +1168,38 @@ func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynami
 			gvr.Version = splittedAPIVersion[0]
 		}
 
-		mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient))
+		mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(in.discoverClient))
 		mapping, err := mapper.RESTMapping(schema.GroupKind{Group: gvr.Group, Kind: gvr.Kind}, gvr.Version)
 		if err != nil {
-			return fmt.Errorf("error creating rest mapping: %w", err)
-		}
+			conditions.MarkFalse(
+				in.clusterAddon,
+				csov1alpha1.EvaluatedCELCondition,
+				csov1alpha1.CRDNotExistingReason,
+				clusterv1.ConditionSeverityError,
+				"error creating rest mapping for CEL expression: %s", err.Error(),
+			)
 
-		resource := dynamicClient.Resource(mapping.Resource)
+			return false, false, fmt.Errorf("error creating rest mapping for CEL expression: %w", err)
+		}
+		conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
+
+		resource := in.dynamicClient.Resource(mapping.Resource)
 
 		unstructuredObj, err := resource.Namespace(object.Namespace).Get(ctx, object.Name, metav1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get object(name: %s, namespace: %s) from dynamic client: %w", object.Name, object.Namespace, err)
+			if !apierrors.IsNotFound(err) {
+				return false, false, fmt.Errorf("failed to get object(name: %s, namespace: %s) from dynamic client: %w", object.Name, object.Namespace, err)
+			}
+
+			conditions.MarkFalse(
+				in.clusterAddon,
+				csov1alpha1.EvaluatedCELCondition,
+				csov1alpha1.ObjectNotFoundReason,
+				clusterv1.ConditionSeverityError,
+				"object(%s/%s) from dynamic client for CEL expression is not found: %s", object.Namespace, object.Name, err.Error(),
+			)
+
+			return false, false, fmt.Errorf("failed to get object(%s/%s) from dynamic client for CEL expression: %w", object.Namespace, object.Name, err)
 		}
 
 		evalMap[object.Key] = unstructuredObj.Object
@@ -1159,19 +1207,39 @@ func getDynamicResourceAndEvaluateCEL(ctx context.Context, dynamicClient *dynami
 
 	out, _, err := prg.Eval(evalMap)
 	if err != nil {
-		return fmt.Errorf("failed to evaluate the Ast and environment against the input vars: %w", err)
+		conditions.MarkFalse(
+			in.clusterAddon,
+			csov1alpha1.EvaluatedCELCondition,
+			csov1alpha1.WrongInputVarReason,
+			clusterv1.ConditionSeverityError,
+			"failed to evaluate the Ast and environment against the input vars for CEL expression: %s", err.Error(),
+		)
+
+		return false, false, fmt.Errorf("failed to evaluate the Ast and environment against the input vars for CEL expression: %w", err)
 	}
+	conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
 
 	boolVal, ok := (out.Value()).(bool)
 	if !ok {
-		return fmt.Errorf("failed to evaluate the cel expression, its value is no boolean: %w", clusteraddon.ErrConditionNotMatch)
-	}
+		conditions.MarkFalse(
+			in.clusterAddon,
+			csov1alpha1.EvaluatedCELCondition,
+			csov1alpha1.CELExpressionTypeMismatchReason,
+			clusterv1.ConditionSeverityError,
+			"failed to evaluate CEL expression: want boolean, got: %s", out.Value(),
+		)
 
-	if !boolVal {
-		return fmt.Errorf("failed to evaluate the cel expression, please check again: %w", clusteraddon.ErrConditionNotMatch)
-	}
+		record.Warnf(
+			in.clusterAddon,
+			csov1alpha1.CELExpressionTypeMismatchReason,
+			"failed to evaluate CEL expression: want boolean, got: %s", out.Value(),
+		)
 
-	return nil
+		return false, true, nil
+	}
+	conditions.Delete(in.clusterAddon, csov1alpha1.EvaluatedCELCondition)
+
+	return boolVal, false, nil
 }
 
 func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath string, cluster *clusterv1.Cluster, c client.Client) ([]byte, error) {

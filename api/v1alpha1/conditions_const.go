@@ -30,11 +30,23 @@ const (
 	// EvaluatedCELCondition reports on whether the CEL expression is evaluated properly.
 	EvaluatedCELCondition clusterv1.ConditionType = "EvaluatedCEL"
 
-	// FailedToEvaluatePreConditionReason is used when some pre CEL expression have been failed to evaluate.
-	FailedToEvaluatePreConditionReason = "FailedToEvaluatePreCondition"
+	// EvaluateCELConditionFailedReason is used when some pre CEL expression have been failed to evaluate.
+	EvaluateCELConditionFailedReason = "EvaluateCELConditionFailed"
 
-	// FailedToEvaluatePostConditionReason is used when some post CEL expression have been failed to evaluate.
-	FailedToEvaluatePostConditionReason = "FailedToEvaluatePostCondition"
+	// CompileCELExpressionFailedReason is used when CEL expression is failed to compile.
+	CompileCELExpressionFailedReason = "CompileCELExpressionFailed"
+
+	// ObjectNotFoundReason is used when dynamic client cannot retrieve a object.
+	ObjectNotFoundReason = "ObjectNotFound"
+
+	// CRDNotExistingReason is used when CRD is not registered in the API server.
+	CRDNotExistingReason = "CRDNotExisting"
+
+	// WrongInputVarReason is used when CEL expression has wrong input var referenced.
+	WrongInputVarReason = "WrongInputVar"
+
+	// CELExpressionTypeMismatchReason is used when CEL expression returns a non boolean type.
+	CELExpressionTypeMismatchReason = "CELExpressionTypeMismatch"
 )
 
 const (
