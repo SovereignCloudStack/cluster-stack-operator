@@ -553,11 +553,7 @@ func getLatestReleaseFromRemoteRepository(ctx context.Context, clusterStack *cso
 	var clusterStacks clusterstack.ClusterStacks
 
 	for _, release := range releases {
-		clusterStackObject, matches, err := matchesSpec(release, &clusterStack.Spec)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get match release tag %q with spec of ClusterStack: %w", release, err)
-		}
-
+		clusterStackObject, matches := matchesSpec(release, clusterStack)
 		if matches {
 			clusterStacks = append(clusterStacks, clusterStackObject)
 		}
@@ -626,16 +622,22 @@ func matchesOwnerRef(a *metav1.OwnerReference, clusterStack *csov1alpha1.Cluster
 	return aGV.Group == clusterStack.GroupVersionKind().Group && a.Kind == clusterStack.Kind && a.Name == clusterStack.Name
 }
 
-func matchesSpec(str string, spec *csov1alpha1.ClusterStackSpec) (clusterstack.ClusterStack, bool, error) {
+func matchesSpec(str string, clusterStack *csov1alpha1.ClusterStack) (clusterstack.ClusterStack, bool) {
 	csObject, err := clusterstack.NewFromClusterStackReleaseProperties(str)
 	if err != nil {
-		return clusterstack.ClusterStack{}, false, fmt.Errorf("failed to get clusterstack object from string %q: %w", str, err)
+		record.Warnf(
+			clusterStack,
+			"FailedToParseClusterStackRelease",
+			"failed to get clusterstack object from string %q: %s", str, err.Error(),
+		)
+
+		return clusterstack.ClusterStack{}, false
 	}
 
-	return csObject, csObject.Version.Channel == spec.Channel &&
-		csObject.KubernetesVersion.StringWithDot() == spec.KubernetesVersion &&
-		csObject.Name == spec.Name &&
-		csObject.Provider == spec.Provider, nil
+	return csObject, csObject.Version.Channel == clusterStack.Spec.Channel &&
+		csObject.KubernetesVersion.StringWithDot() == clusterStack.Spec.KubernetesVersion &&
+		csObject.Name == clusterStack.Spec.Name &&
+		csObject.Provider == clusterStack.Spec.Provider
 }
 
 func unstructuredSpecEqual(oldObj, newObj map[string]interface{}) (newSpec map[string]interface{}, isEqual bool, err error) {
