@@ -17,7 +17,7 @@
 # If you make changes to this Dockerfile run `make builder-image-push`.
 
 # Install Lychee
-FROM docker.io/library/alpine:3.20.0@sha256:216266c86fc4dcef5619930bd394245824c2af52fd21ba7c6fa0e618657d4c3b as lychee
+FROM docker.io/library/alpine:3.20.2 AS lychee
 # update: datasource=github-tags depName=lycheeverse/lychee versioning=semver
 ENV LYCHEE_VERSION="v0.15.1"
 # hadolint ignore=DL3018
@@ -29,22 +29,22 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf /tmp/linux-amd64 /tmp/lychee-${LYCHEE_VERSION}.tgz
 
-FROM cgr.dev/chainguard/wolfi-base:latest as wolfi
+FROM cgr.dev/chainguard/wolfi-base:latest AS wolfi
 
 # update: datasource=github-tags depName=kubernetes-sigs/cluster-api
-ARG CLUSTERCTL_VERSION="v1.6.2"
+ARG CLUSTERCTL_VERSION="v1.8.1"
 # update: datasource=github-tags depName=helm/helm
 ENV HELM_VERSION="v3.14.1"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
-ARG KIND_VERSION="v0.20.0"
+ARG KIND_VERSION="v0.24.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION="v1.27.3"
+ARG KUBECTL_VERSION="v1.30.4"
 # update: datasource=github-tags depName=kubernetes-sigs/kustomize extractVersion=^kustomize\/v(?<version>.+)$
-ARG KUSTOMIZE_VERSION="v5.3.0"
+ARG KUSTOMIZE_VERSION="v5.4.3"
 # update: datasource=github-tags depName=aquasecurity/trivy
-ARG TRIVY_VERSION="v0.48.3"
+ARG TRIVY_VERSION="v0.54.1"
 # update: datasource=github-tags depName=kubernetes-sigs/controller-tools
-ARG CONTROLLER_GEN_VERSION="v0.14.0"
+ARG CONTROLLER_GEN_VERSION="v0.16.1"
 
 # hadolint ignore=DL3018
 RUN apk add -U --no-cache \
@@ -55,27 +55,27 @@ RUN apk add -U --no-cache \
     kind=~${KIND_VERSION#v} \
     kubectl=~${KUBECTL_VERSION#v} \
     kustomize=~${KUSTOMIZE_VERSION#v} \
-    trivy=~${TRIVY_VERSION#v} 
+    trivy=~${TRIVY_VERSION#v}
 
 # Install Golang CI Lint
-FROM docker.io/library/alpine:3.20.0@sha256:216266c86fc4dcef5619930bd394245824c2af52fd21ba7c6fa0e618657d4c3b as golangci
+FROM docker.io/library/alpine:3.20.2 AS golangci
 # update: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-ENV GOLANGCI_VERSION="v1.59.0"
+ENV GOLANGCI_VERSION="v1.60.3"
 WORKDIR /
 # hadolint ignore=DL3018,DL4006
 RUN apk add --no-cache curl && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s ${GOLANGCI_VERSION}
 
 # Install Hadolint
-FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:7dba9a9f1a0350f6d021fb2f6f88900998a4fb0aaf8e4330aa8c38544f04db42 as hadolint
+FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:7dba9a9f1a0350f6d021fb2f6f88900998a4fb0aaf8e4330aa8c38544f04db42 AS hadolint
 
 # Install Trivy
-FROM docker.io/aquasec/trivy:0.51.4@sha256:20a7c9cd02841a3d8d2a2506b93502a944adc57a3db9adf75b59266023b2af1e as trivy
+FROM docker.io/aquasec/trivy:0.54.1 AS trivy
 
 ############################
 # CSO Build Image Base #
 ############################
-FROM docker.io/library/golang:1.21.6-bullseye
+FROM docker.io/library/golang:1.23.0-bullseye
 
 # update: datasource=github-tags depName=adrienverge/yamllint versioning=semver
 ENV YAMLLINT_VERSION="v1.35.1"

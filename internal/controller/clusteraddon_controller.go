@@ -188,7 +188,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.Class), r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, "%s", err.Error())
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	if download {
@@ -204,9 +204,9 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
 			csov1alpha1.IssueWithReleaseAssetsReason,
 			clusterv1.ConditionSeverityError,
-			msg,
+			"%s", msg,
 		)
-		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
+		record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
 		return reconcile.Result{}, nil
 	}
 
@@ -298,8 +298,23 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// multi-stage cluster addon flow
 	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
 	if err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+		conditions.MarkFalse(
+			clusterAddon,
+			csov1alpha1.ClusterAddonConfigValidatedCondition,
+			csov1alpha1.ParsingClusterAddonConfigFailedReason,
+			clusterv1.ConditionSeverityError,
+			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
+		)
+
+		record.Warnf(
+			clusterAddon,
+			csov1alpha1.ParsingClusterAddonConfigFailedReason,
+			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
+		)
+
+		return reconcile.Result{}, nil
 	}
+	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterAddonConfigValidatedCondition)
 
 	// clusteraddon.yaml in the release.
 	clusterAddonConfig, err := clusteraddon.ParseConfig(in.clusterAddonConfigPath)
@@ -932,9 +947,9 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 			csov1alpha1.AssetsClientAPIAvailableCondition,
 			csov1alpha1.FailedCreateAssetsClientReason,
 			clusterv1.ConditionSeverityError,
-			err.Error(),
+			"%s", err.Error(),
 		)
-		record.Warnf(clusterAddon, "FailedCreateAssetsClient", err.Error())
+		record.Warn(clusterAddon, "FailedCreateAssetsClient", err.Error())
 
 		// give the assets client a second change
 		if isSet {
@@ -948,7 +963,10 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	// check if old cluster stack release is present or not.
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(clusterAddon,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError, "%s", err.Error())
 		return nil, true, nil
 	}
 	if download {
@@ -976,9 +994,9 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
 			csov1alpha1.IssueWithReleaseAssetsReason,
 			clusterv1.ConditionSeverityError,
-			msg,
+			"%s", msg,
 		)
-		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
+		record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
 		return nil, false, nil
 	}
 
