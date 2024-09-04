@@ -39,7 +39,7 @@ const (
 
 const (
 	// HelmChartFoundCondition reports when mentioned helm chart is present in the cluster addon tar archive.
-	HelmChartFoundCondition = "HelmChartFound"
+	HelmChartFoundCondition clusterv1.ConditionType = "HelmChartFound"
 
 	// HelmChartMissingReason is used when mentioned helm chart is missing in the cluster addon tar archive.
 	HelmChartMissingReason = "HelmChartMissing"
@@ -60,6 +60,14 @@ const (
 
 	// TemplateNewClusterStackFailedReason is used when there is a issue doing helm template for the new cluster stack.
 	TemplateNewClusterStackFailedReason = "TemplateNewClusterStackFailed"
+)
+
+const (
+	// ClusterAddonConfigValidatedCondition reports when there is a error parsing clusteraddon.yaml.
+	ClusterAddonConfigValidatedCondition clusterv1.ConditionType = "ClusterAddonConfigValidated"
+
+	// ParsingClusterAddonConfigFailedReason is used when there's some error happen while parsing clusteraddon.yaml.
+	ParsingClusterAddonConfigFailedReason = "ParsingClusterAddonConfigFailed"
 )
 
 const (
@@ -91,7 +99,7 @@ const (
 
 const (
 	// ProviderClusterStackReleasesSyncedCondition reports on whether the ProviderClusterStackReleases are ready.
-	ProviderClusterStackReleasesSyncedCondition = "ProviderClusterStackReleasesSynced"
+	ProviderClusterStackReleasesSyncedCondition clusterv1.ConditionType = "ProviderClusterStackReleasesSynced"
 
 	// ProviderTemplateNotFoundReason is used when providerTemplate is not found.
 	ProviderTemplateNotFoundReason = "ProviderTemplateNotFound"
@@ -102,7 +110,7 @@ const (
 
 const (
 	// ClusterStackReleasesSyncedCondition reports on whether the ClusterStackReleases are ready.
-	ClusterStackReleasesSyncedCondition = "ClusterStackReleasesSynced" //#nosec
+	ClusterStackReleasesSyncedCondition clusterv1.ConditionType = "ClusterStackReleasesSynced" //#nosec
 )
 
 const (
