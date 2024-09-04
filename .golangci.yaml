@@ -276,7 +276,6 @@ issues:
       path: _test\.go
   exclude-dirs:
     - vendor$
-    - test/vendor$
 run:
   timeout: 10m
   go: "1.22"
