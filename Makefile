@@ -81,7 +81,7 @@ MGT_CLUSTER_KUBECONFIG ?= ".mgt-cluster-kubeconfig.yaml"
 
 # Kubebuilder.
 export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.29.3
-# versions 
+# versions
 CTLPTL_VERSION := 0.8.25
 
 ##@ Binaries
@@ -445,7 +445,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --out-format=github-actions
+	GO111MODULE=on golangci-lint run -v --out-format=colored-line-number
 endif
 
 .PHONY: lint-yaml

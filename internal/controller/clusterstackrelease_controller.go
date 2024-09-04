@@ -107,7 +107,10 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 
 	releaseAssets, download, err := release.New(releaseTag, r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(clusterStackRelease,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError, "%s", err.Error())
 		return reconcile.Result{RequeueAfter: 1 * time.Minute}, fmt.Errorf("failed to create release: %w", err)
 	}
 
@@ -127,9 +130,9 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 				csov1alpha1.AssetsClientAPIAvailableCondition,
 				csov1alpha1.FailedCreateAssetsClientReason,
 				clusterv1.ConditionSeverityError,
-				err.Error(),
+				"%s", err.Error(),
 			)
-			record.Warnf(clusterStackRelease, "FailedCreateAssetsClient", err.Error())
+			record.Warn(clusterStackRelease, "FailedCreateAssetsClient", err.Error())
 
 			// give the assets client a second change
 			if isSet {

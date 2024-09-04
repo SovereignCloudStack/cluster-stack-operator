@@ -120,9 +120,9 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				csov1alpha1.AssetsClientAPIAvailableCondition,
 				csov1alpha1.FailedCreateAssetsClientReason,
 				clusterv1.ConditionSeverityError,
-				err.Error(),
+				"%s", err.Error(),
 			)
-			record.Warnf(clusterStack, "FailedCreateAssetsClient", err.Error())
+			record.Warn(clusterStack, "FailedCreateAssetsClient", err.Error())
 
 			// give the assets client a second change
 			if isSet {
@@ -140,7 +140,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				csov1alpha1.ReleasesSyncedCondition,
 				csov1alpha1.FailedToSyncReason,
 				clusterv1.ConditionSeverityWarning,
-				err.Error(),
+				"%s", err.Error(),
 			)
 			logger.Error(err, "failed to get latest release from remote repository")
 		}
@@ -165,7 +165,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		if err := r.Delete(ctx, toDelete[i]); err != nil && !apierrors.IsNotFound(err) {
 			// ignore not found errors when deleting
 			reterr := fmt.Errorf("failed to delete cluster stack release %s: %w", csr.Name, err)
-			record.Eventf(clusterStack, "FailedToDeleteClusterStackRelease", reterr.Error())
+			record.Event(clusterStack, "FailedToDeleteClusterStackRelease", reterr.Error())
 			return reconcile.Result{}, reterr
 		}
 	}
@@ -198,7 +198,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 						csov1alpha1.ProviderClusterStackReleasesSyncedCondition,
 						csov1alpha1.FailedToCreateOrUpdateReason,
 						clusterv1.ConditionSeverityWarning,
-						err.Error(),
+						"%s", err.Error(),
 					)
 				}
 				return reconcile.Result{}, fmt.Errorf("failed to create or update provider specific ClusterStackRelease %s/%s: %w", req.Namespace, csr.Name, err)
@@ -210,7 +210,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 				csov1alpha1.ClusterStackReleasesSyncedCondition,
 				csov1alpha1.FailedToCreateOrUpdateReason,
 				clusterv1.ConditionSeverityWarning,
-				err.Error(),
+				"%s", err.Error(),
 			)
 			return reconcile.Result{}, fmt.Errorf("failed to get or create ClusterStackRelease %s/%s: %w", req.Namespace, csr.Name, err)
 		}
