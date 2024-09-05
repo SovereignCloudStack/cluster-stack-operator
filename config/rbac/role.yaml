@@ -29,6 +29,7 @@ rules:
   - cluster.x-k8s.io
   - controlplane.cluster.x-k8s.io
   - infrastructure.cluster.x-k8s.io
+  - infrastructure.clusterstack.x-k8s.io
   resources:
   - '*'
   verbs:
@@ -61,12 +62,15 @@ rules:
   - clusterstack.x-k8s.io
   resources:
   - clusteraddons/finalizers
+  - clusterstackreleases/finalizers
   verbs:
   - update
 - apiGroups:
   - clusterstack.x-k8s.io
   resources:
   - clusteraddons/status
+  - clusterstackreleases/status
+  - clusterstacks/status
   verbs:
   - get
   - patch
@@ -85,20 +89,6 @@ rules:
 - apiGroups:
   - clusterstack.x-k8s.io
   resources:
-  - clusterstackreleases/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - clusterstack.x-k8s.io
-  resources:
-  - clusterstackreleases/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - clusterstack.x-k8s.io
-  resources:
   - clusterstacks
   verbs:
   - get
@@ -113,23 +103,3 @@ rules:
   verbs:
   - delete
   - update
-- apiGroups:
-  - clusterstack.x-k8s.io
-  resources:
-  - clusterstacks/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - infrastructure.clusterstack.x-k8s.io
-  resources:
-  - '*'
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch

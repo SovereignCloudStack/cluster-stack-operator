@@ -1295,66 +1295,46 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	logger := ctrl.LoggerFrom(ctx)
-	c, err := ctrl.NewControllerManagedBy(mgr).
+	blder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterAddon{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue)).
-		Build(r)
-	if err != nil {
-		return fmt.Errorf("error creating controller: %w", err)
-	}
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue))
 
 	// check also for updates in cluster objects
-	if err := c.Watch(
-		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
-		handler.EnqueueRequestsFromMapFunc(clusterToClusterAddon(ctx)),
-		predicate.Funcs{
-			// We're only interested in the update events for a cluster object where cluster.spec.topology.class changed
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldCluster, ok := e.ObjectOld.(*clusterv1.Cluster)
-				if !ok {
+	return blder.WatchesRawSource(
+		source.Kind(mgr.GetCache(), &clusterv1.Cluster{},
+			handler.TypedEnqueueRequestsFromMapFunc(clusterToClusterAddon),
+			predicate.TypedFuncs[*clusterv1.Cluster]{
+				// We're only interested in the update events for a cluster object where cluster.spec.topology.class changed
+				UpdateFunc: func(e event.TypedUpdateEvent[*clusterv1.Cluster]) bool {
+					oldCluster := e.ObjectOld
+					newCluster := e.ObjectNew
+					if oldCluster.Spec.Topology != nil && newCluster.Spec.Topology != nil &&
+						oldCluster.Spec.Topology.Class != newCluster.Spec.Topology.Class {
+						return true
+					}
 					return false
-				}
-
-				newCluster, ok := e.ObjectNew.(*clusterv1.Cluster)
-				if !ok {
+				},
+				GenericFunc: func(_ event.TypedGenericEvent[*clusterv1.Cluster]) bool {
 					return false
-				}
-
-				if oldCluster.Spec.Topology != nil && newCluster.Spec.Topology != nil &&
-					oldCluster.Spec.Topology.Class != newCluster.Spec.Topology.Class {
-					return true
-				}
-
-				return false
+				},
+				CreateFunc: func(_ event.TypedCreateEvent[*clusterv1.Cluster]) bool {
+					return false
+				},
+				DeleteFunc: func(_ event.TypedDeleteEvent[*clusterv1.Cluster]) bool {
+					return false
+				},
 			},
-			GenericFunc: func(_ event.GenericEvent) bool {
-				return false
-			},
-			CreateFunc: func(_ event.CreateEvent) bool {
-				return false
-			},
-			DeleteFunc: func(_ event.DeleteEvent) bool {
-				return false
-			},
-		},
-	); err != nil {
-		return fmt.Errorf("failed adding a watch for ready clusters: %w", err)
-	}
-
-	return nil
+		)).Complete(r)
 }
 
 // clusterToClusterAddon enqueues requests for clusterAddons on change of cluster objects.
-func clusterToClusterAddon(_ context.Context) handler.MapFunc {
-	return func(_ context.Context, o client.Object) []reconcile.Request {
-		clusterAddonName := types.NamespacedName{
-			Namespace: o.GetNamespace(),
-			Name:      fmt.Sprintf("cluster-addon-%s", o.GetName()),
-		}
-
-		return []reconcile.Request{{NamespacedName: clusterAddonName}}
+func clusterToClusterAddon(_ context.Context, c *clusterv1.Cluster) []ctrl.Request {
+	clusterAddonName := types.NamespacedName{
+		Namespace: c.GetNamespace(),
+		Name:      fmt.Sprintf("cluster-addon-%s", c.GetName()),
 	}
+	return []reconcile.Request{{NamespacedName: clusterAddonName}}
 }
 
 func unTarContent(src, dst string) error {
