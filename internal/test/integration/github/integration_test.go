@@ -144,7 +144,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 
 			clusterStackKey = types.NamespacedName{Name: clusterStack.Name, Namespace: testNs.Name}
 
-			cs, err := clusterstack.New(clusterStack.Spec.Provider, clusterStack.Spec.Name, clusterStack.Spec.KubernetesVersion, version)
+			cs, err := clusterstack.New(clusterStack.Spec.Provider, clusterStack.Spec.Name, clusterStack.Spec.KubernetesVersion, "v2")
 			Expect(err).To(BeNil())
 
 			clusterStackReleaseKey = types.NamespacedName{Name: cs.String(), Namespace: testNs.Name}

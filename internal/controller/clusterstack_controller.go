@@ -113,7 +113,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	var latest *string
 
 	if clusterStack.Spec.AutoSubscribe {
-		gc, err := r.AssetsClientFactory.NewClient(ctx)
+		ac, err := r.AssetsClientFactory.NewClient(ctx)
 		if err != nil {
 			isSet := conditions.IsFalse(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition)
 			conditions.MarkFalse(clusterStack,
@@ -133,7 +133,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		conditions.MarkTrue(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition)
 
-		latest, err = getLatestReleaseFromRemoteRepository(ctx, clusterStack, gc)
+		latest, err = getLatestReleaseFromRemoteRepository(ctx, clusterStack, ac)
 		if err != nil {
 			// only log error and mark condition as false, but continue
 			conditions.MarkFalse(clusterStack,
