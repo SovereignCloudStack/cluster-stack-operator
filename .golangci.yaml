@@ -98,6 +98,9 @@ linters-settings:
       - performance
       - experimental
       - opinionated
+    settings:
+      hugeParam:
+        sizeThreshold: 120
   revive:
     enable-all-rules: true
     rules:
