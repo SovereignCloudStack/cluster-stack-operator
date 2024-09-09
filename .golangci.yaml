@@ -101,6 +101,8 @@ linters-settings:
     settings:
       hugeParam:
         sizeThreshold: 120
+      rangeValCopy:
+        sizeThreshold: 512
   revive:
     enable-all-rules: true
     rules:

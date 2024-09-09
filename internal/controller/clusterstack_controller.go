@@ -157,7 +157,6 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to get ClusterStackReleases from clusterstack.spec.versions: %w", err)
 	}
-
 	toCreate, toDelete := makeDiff(existingClusterStackReleases, latest, latestReady, inSpec, inUse)
 
 	// delete all cluster stack releases
@@ -442,12 +441,10 @@ func (r *ClusterStackReconciler) getExistingClusterStackReleases(ctx context.Con
 
 	existingClusterStackReleases := make([]*csov1alpha1.ClusterStackRelease, 0, len(csrList.Items))
 
-	for i := range csrList.Items {
-		csr := csrList.Items[i]
-		for i := range csr.GetOwnerReferences() {
-			ownerRef := csr.GetOwnerReferences()[i]
+	for _, csr := range csrList.Items {
+		for _, ownerRef := range csr.GetOwnerReferences() {
 			if matchesOwnerRef(&ownerRef, clusterStack) {
-				existingClusterStackReleases = append(existingClusterStackReleases, &csrList.Items[i])
+				existingClusterStackReleases = append(existingClusterStackReleases, &csr)
 				break
 			}
 		}
@@ -463,29 +460,28 @@ func makeDiff(clusterStackReleases []*csov1alpha1.ClusterStackRelease, latest, l
 	mapToCreate := make(map[string]struct{})
 
 	// decide whether existing clusterStackReleases should be kept or not
-	for i, cs := range clusterStackReleases {
+	for _, csr := range clusterStackReleases {
 		var shouldCreate bool
-
 		// if clusterStackRelease is either the latest or the latest that is ready, we want to have it
-		if latest != nil && cs.Name == *latest || latestReady != nil && cs.Name == *latestReady {
+		if latest != nil && csr.Name == *latest || latestReady != nil && csr.Name == *latestReady {
 			shouldCreate = true
 		}
 
 		// if the clusterStackRelease is listed in spec, then we want to keep it
-		if _, found := inSpec[cs.Name]; found {
+		if _, found := inSpec[csr.Name]; found {
 			shouldCreate = true
 		}
 
 		// if the clusterStackRelease is in use, then we want to keep it
-		if _, found := inUse[cs.Name]; found {
+		if _, found := inUse[csr.Name]; found {
 			shouldCreate = true
 		}
 
 		if shouldCreate {
-			toCreate = append(toCreate, clusterStackReleases[i])
-			mapToCreate[cs.Name] = struct{}{}
+			toCreate = append(toCreate, csr)
+			mapToCreate[csr.Name] = struct{}{}
 		} else {
-			toDelete = append(toDelete, clusterStackReleases[i])
+			toDelete = append(toDelete, csr)
 		}
 	}
 
@@ -506,7 +502,6 @@ func makeDiff(clusterStackReleases []*csov1alpha1.ClusterStackRelease, latest, l
 			toCreate = append(toCreate, csr)
 		}
 	}
-
 	return toCreate, toDelete
 }
 

@@ -537,7 +537,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 				clusterStackReleaseTagV2Key = types.NamespacedName{Name: clusterStackReleaseTagV2, Namespace: testNs.Name}
 
 				Eventually(func() bool {
-					obj1, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
+					providerObj1, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
 						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
 						Kind:       "TestInfrastructureProviderClusterStackRelease",
 						Name:       clusterStackReleaseTagV1,
@@ -548,16 +548,22 @@ var _ = Describe("ClusterStackReconciler", func() {
 						return false
 					}
 					fmt.Printf("foundProviderclusterStackReleaseRef is found. %s Finalizers: %+v OwnerRefs: %+v\n",
-						obj1.GetName(), obj1.GetFinalizers(), obj1.GetOwnerReferences())
-					if len(obj1.GetOwnerReferences()) == 0 {
+						providerObj1.GetName(), providerObj1.GetFinalizers(), providerObj1.GetOwnerReferences())
+					if len(providerObj1.GetOwnerReferences()) == 0 {
 						fmt.Printf("    Missing finalizer/ownerRefs\n")
+						return false
+					}
+					csoObj1 := &csov1alpha1.ClusterStackRelease{}
+					err = testEnv.Get(ctx, clusterStackReleaseTagV1Key, csoObj1)
+					if err != nil {
+						fmt.Printf("clusterStackReleaseTagV1 not found. %s\n", err.Error())
 						return false
 					}
 					return true
 				}, 2*timeout, interval).Should(BeTrue())
 
 				Eventually(func() bool {
-					obj2, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
+					providerObj2, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
 						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
 						Kind:       "TestInfrastructureProviderClusterStackRelease",
 						Name:       clusterStackReleaseTagV2,
@@ -568,7 +574,13 @@ var _ = Describe("ClusterStackReconciler", func() {
 						return false
 					}
 					fmt.Printf("foundProviderclusterStackReleaseRef is found. %s %+v %+v\n",
-						obj2.GetName(), obj2.GetFinalizers(), obj2.GetOwnerReferences())
+						providerObj2.GetName(), providerObj2.GetFinalizers(), providerObj2.GetOwnerReferences())
+					csoObj2 := &csov1alpha1.ClusterStackRelease{}
+					err = testEnv.Get(ctx, clusterStackReleaseTagV2Key, csoObj2)
+					if err != nil {
+						fmt.Printf("clusterStackReleaseTagV2 not found. %s\n", err.Error())
+						return false
+					}
 					return true
 				}, timeout, interval).Should(BeTrue())
 			})
@@ -640,67 +652,71 @@ var _ = Describe("ClusterStackReconciler", func() {
 					Namespace:  testNs.Name,
 				}
 
-				// time.Sleep(time.Second * 1)
-				// Eventually(func() bool {
-				// 	obj, err := external.Get(ctx, testEnv.GetClient(), providerclusterStackReleaseRefV2, testNs.Name)
-				// 	if err != nil {
-				// 		fmt.Printf("foundProviderclusterStackReleaseRef is not found. %s\n", err.Error())
-				// 		return false
-				// 	}
-				// 	fmt.Printf("foundProviderclusterStackReleaseRef is found. %s %+v %+v\n",
-				// 		obj.GetName(), obj.GetFinalizers(), obj.GetOwnerReferences())
-				// 	return true
-				// }, timeout, interval).Should(BeTrue())
+				// Wait until the ProviderClusterStackRelease is created
+				// Check for the correct ownerRef
+				Eventually(func() bool {
+					obj, err := external.Get(ctx, testEnv.GetClient(), providerclusterStackReleaseRefV2, testNs.Name)
+					if apierrors.IsNotFound(err) {
+						fmt.Printf("   providerclusterStackReleaseRefV2 not found (retry). %s\n", err.Error())
+						return false
+					}
+					if err != nil {
+						fmt.Printf("   get providerclusterStackReleaseRefV2: error (retry). %s\n", err.Error())
+						return false
+					}
+					if obj.GetDeletionTimestamp() != nil {
+						// in envTests there is not GC: If the parent-objects gets deleted, the child-objects are not updated..
+						fmt.Printf("   I am confused. providerclusterStackReleaseRefV2 has a deletionTimestamp? (retry). %s\n", obj.GetDeletionTimestamp())
+						return false
+					}
+					owners := obj.GetOwnerReferences()
+					fmt.Printf("    providerclusterStackReleaseRefV2 found: Finalizers %+v OwnerRefs: %+v Kind: %s, uuid: %s\n", obj.GetFinalizers(), owners,
+						obj.GetKind(), obj.GetUID())
+					if len(obj.GetOwnerReferences()) == 0 {
+						fmt.Printf("    Missing finalizer/ownerRefs\n")
+						return false
+					}
+					if len(obj.GetOwnerReferences()) > 1 {
+						fmt.Printf("    Too many ownerRefs?\n")
+						return false
+					}
+					ownerRef := obj.GetOwnerReferences()[0]
+					if ownerRef.APIVersion != "clusterstack.x-k8s.io/v1alpha1" || ownerRef.Kind != "ClusterStackRelease" ||
+						ownerRef.Name != "docker-ferrol-1-27-v2" || !*ownerRef.Controller || !*ownerRef.BlockOwnerDeletion {
+						fmt.Printf("    I am confused, wrong ownerRef: %+v\n", ownerRef)
+						return false
+					}
+					return true
+				}, timeout, interval).Should(BeTrue())
 
 				fmt.Printf("old %+v new %+v\n", clusterStack.Spec.Versions, []string{"v1"})
 				clusterStack.Spec.Versions = []string{"v1"}
 
+				// remove v2 from CS
 				Eventually(func() error {
 					err := ph.Patch(ctx, clusterStack)
-					fmt.Printf("patch result: %v\n", err)
 					return err
 				}, timeout, interval).Should(BeNil())
-				fmt.Println("after patchhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
 
+				// wait until clusterStackRelease V2 is deleted
+				// This delete propagation (From CS spec.versions --> ClusterStackRelease) is done by our controller (not Kubernetes GC)
 				Eventually(func() bool {
 					obj := csov1alpha1.ClusterStackRelease{}
 					err := testEnv.Get(ctx, clusterStackReleaseTagV2Key, &obj)
 
 					if apierrors.IsNotFound(err) {
-						fmt.Printf("clusterStackReleaseTagV2Key was deleted (good): %s\n", err.Error())
+						fmt.Printf("    clusterStackReleaseTagV2Key was deleted (good): %s\n", err.Error())
 						return true
 					}
 
 					if err != nil {
-						fmt.Printf("clusterStackReleaseTagV2Key error (retry). %s\n", err.Error())
+						fmt.Printf("    clusterStackReleaseTagV2Key error (retry). %s\n", err.Error())
 						return false
 					}
-					fmt.Printf("clusterStackReleaseTagV2Key is found (will retry). %s Finalizers: %+v OwnerRefs %+v DelTimestamp: %v\n", obj.GetName(), obj.GetFinalizers(), obj.GetOwnerReferences(),
+					fmt.Printf("    clusterStackReleaseTagV2Key is found (will retry). %s Finalizers: %+v OwnerRefs %+v DelTimestamp: %v\n", obj.GetName(), obj.GetFinalizers(), obj.GetOwnerReferences(),
 						obj.GetDeletionTimestamp())
 					return false
 				}, timeout, interval).Should(BeTrue())
-
-				fmt.Println("after clusterStackReleaseTagV2Key is not found.")
-				Eventually(func() bool {
-					obj, err := external.Get(ctx, testEnv.GetClient(), providerclusterStackReleaseRefV2, testNs.Name)
-					if apierrors.IsNotFound(err) {
-						return true
-					}
-					var msg string
-					if err != nil {
-						msg = "err: " + err.Error()
-					} else {
-						ts := obj.GetDeletionTimestamp()
-						if ts == nil {
-							msg = "DeletionTimestamp is nil"
-						} else {
-							msg = "Del: " + obj.GetDeletionTimestamp().String()
-						}
-						msg += fmt.Sprintf(" Finalizers %+v OwnerRefs: %+v", obj.GetFinalizers() obj.GetOwnerReferences())
-					}
-					fmt.Printf("uuuuuuuuuuuuuuuuuuuuuuuu %s\n", msg)
-					return false
-				}, 5*timeout, interval).Should(BeTrue())
 			})
 		})
 	})
