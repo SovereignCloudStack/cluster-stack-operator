@@ -12,7 +12,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - exportloopref
+    - copyloopvar
     - forcetypeassert
     - gci
     - goconst
@@ -86,10 +86,7 @@ linters-settings:
     allow-unused: false
     allow-leading-space: false
     require-specific: true
-  staticcheck:
-    go: "1.21"
   stylecheck:
-    go: "1.21"
     checks: ["all", "-ST1006"]
     dot-import-whitelist:
       - "github.com/onsi/gomega"
@@ -101,6 +98,9 @@ linters-settings:
       - performance
       - experimental
       - opinionated
+    settings:
+      hugeParam:
+        sizeThreshold: 120
   revive:
     enable-all-rules: true
     rules:
@@ -223,8 +223,6 @@ linters-settings:
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#struct-tag
       - name: struct-tag
         disabled: true
-  unused:
-    go: "1.21"
   usestdlibvars:
     # Suggest the use of http.MethodXX.
     # Default: true
@@ -247,9 +245,6 @@ linters-settings:
     # Suggest the use of rpc.DefaultXXPath.
     # Default: false
     default-rpc-path: true
-    # Suggest the use of os.DevNull.
-    # Default: false
-    os-dev-null: true
     # Suggest the use of sql.LevelXX.String().
     # Default: false
     sql-isolation-level: true
@@ -259,9 +254,6 @@ linters-settings:
     # Suggest the use of constant.Kind.String().
     # Default: false
     constant-kind: true
-    # Suggest the use of syslog.Priority.
-    # Default: false
-    syslog-priority: true
   wrapcheck:
     ignoreSigs:
       - status.Error(
@@ -285,11 +277,10 @@ issues:
     - linters:
         - wrapcheck
       path: _test\.go
+  exclude-dirs:
+    - vendor$
 run:
   timeout: 10m
-  go: "1.21"
+  go: "1.22"
   allow-parallel-runners: true
   modules-download-mode: vendor
-  skip-dirs:
-    - vendor$
-    - test/vendor$

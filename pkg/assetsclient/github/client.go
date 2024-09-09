@@ -77,7 +77,7 @@ func (c *realGhClient) ListRelease(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to list releases: %w", err)
 	}
 
-	if response != nil && response.StatusCode != 200 {
+	if response != nil && response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("got unexpected status from call to remote repository: %s", response.Status)
 	}
 

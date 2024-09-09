@@ -188,7 +188,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.Class), r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, "%s", err.Error())
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	if download {
@@ -204,9 +204,9 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
 			csov1alpha1.IssueWithReleaseAssetsReason,
 			clusterv1.ConditionSeverityError,
-			msg,
+			"%s", msg,
 		)
-		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
+		record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
 		return reconcile.Result{}, nil
 	}
 
@@ -216,6 +216,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	in := &templateAndApplyClusterAddonInput{
 		clusterAddonChartPath:  releaseAsset.ClusterAddonChartPath(),
 		clusterAddonValuesPath: releaseAsset.ClusterAddonValuesPath(),
+		kubernetesVersion:      releaseAsset.Meta.Versions.Kubernetes,
 		clusterAddon:           clusterAddon,
 		cluster:                cluster,
 		restConfig:             restConfig,
@@ -297,8 +298,23 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// multi-stage cluster addon flow
 	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
 	if err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to get addon stages input: %w", err)
+		conditions.MarkFalse(
+			clusterAddon,
+			csov1alpha1.ClusterAddonConfigValidatedCondition,
+			csov1alpha1.ParsingClusterAddonConfigFailedReason,
+			clusterv1.ConditionSeverityError,
+			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
+		)
+
+		record.Warnf(
+			clusterAddon,
+			csov1alpha1.ParsingClusterAddonConfigFailedReason,
+			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
+		)
+
+		return reconcile.Result{}, nil
 	}
+	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterAddonConfigValidatedCondition)
 
 	// clusteraddon.yaml in the release.
 	clusterAddonConfig, err := clusteraddon.ParseConfig(in.clusterAddonConfigPath)
@@ -323,6 +339,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// src - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1.tgz
 		// dst - /tmp/cluster-stacks/docker-ferrol-1-27-v1/docker-ferrol-1-27-cluster-addon-v1/
 		in.oldDestinationClusterAddonChartDir = strings.TrimSuffix(oldRelease.ClusterAddonChartPath(), ".tgz")
+		in.oldKubernetesVersion = oldRelease.Meta.Versions.Kubernetes
 
 		if err := unTarContent(oldRelease.ClusterAddonChartPath(), in.oldDestinationClusterAddonChartDir); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to untar old cluster stack cluster addon chart: %q: %w", oldRelease.ClusterAddonChartPath(), err)
@@ -512,7 +529,7 @@ func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in *t
 			}
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name), newBuildTemplate)
+		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name), newBuildTemplate, in.kubernetesVersion)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template new helm chart of the latest cluster stack: %w", err)
 		}
@@ -551,7 +568,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 			return nil, fmt.Errorf("failed to build template from the old cluster stack cluster addon values: %w", err)
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(oldRelease.ClusterAddonChartPath(), buildTemplate)
+		helmTemplate, err := helmTemplateClusterAddon(oldRelease.ClusterAddonChartPath(), buildTemplate, oldRelease.Meta.Versions.Kubernetes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template helm chart: %w", err)
 		}
@@ -588,7 +605,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 			}
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name), newBuildTemplate)
+		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name), newBuildTemplate, oldRelease.Meta.Versions.Kubernetes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template new helm chart: %w", err)
 		}
@@ -664,6 +681,8 @@ type templateAndApplyClusterAddonInput struct {
 	// clusteraddon.yaml
 	clusterAddonConfigPath string
 	clusterAddon           *csov1alpha1.ClusterAddon
+	kubernetesVersion      string
+	oldKubernetesVersion   string
 	cluster                *clusterv1.Cluster
 	restConfig             *rest.Config
 	addonStagesInput
@@ -727,7 +746,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 		return false, fmt.Errorf("failed to build template from cluster addon values: %w", err)
 	}
 
-	helmTemplate, err := helmTemplateClusterAddon(clusterAddonChart, buildTemplate)
+	helmTemplate, err := helmTemplateClusterAddon(clusterAddonChart, buildTemplate, in.kubernetesVersion)
 	if err != nil {
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -928,9 +947,9 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 			csov1alpha1.AssetsClientAPIAvailableCondition,
 			csov1alpha1.FailedCreateAssetsClientReason,
 			clusterv1.ConditionSeverityError,
-			err.Error(),
+			"%s", err.Error(),
 		)
-		record.Warnf(clusterAddon, "FailedCreateAssetsClient", err.Error())
+		record.Warn(clusterAddon, "FailedCreateAssetsClient", err.Error())
 
 		// give the assets client a second change
 		if isSet {
@@ -944,7 +963,10 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	// check if old cluster stack release is present or not.
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(clusterAddon,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError, "%s", err.Error())
 		return nil, true, nil
 	}
 	if download {
@@ -972,9 +994,9 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
 			csov1alpha1.IssueWithReleaseAssetsReason,
 			clusterv1.ConditionSeverityError,
-			msg,
+			"%s", msg,
 		)
-		record.Warnf(clusterAddon, "ValidateHelmChartFailed", msg)
+		record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
 		return nil, false, nil
 	}
 
@@ -1017,7 +1039,7 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 				return true, nil, nil, nil
 			}
 
-			oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate)
+			oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate, in.oldKubernetesVersion)
 			if err != nil {
 				conditions.MarkFalse(
 					in.clusterAddon,
@@ -1061,7 +1083,7 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 		}
 	}
 
-	newHelmTemplate, err = helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate)
+	newHelmTemplate, err = helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate, in.kubernetesVersion)
 	if err != nil {
 		conditions.MarkFalse(
 			in.clusterAddon,
@@ -1088,7 +1110,7 @@ func helmTemplateNewClusterStack(in *templateAndApplyClusterAddonInput, name str
 	var buildTemplate []byte
 
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, name)
-	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate)
+	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate, in.kubernetesVersion)
 	if err != nil {
 		return nil, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
@@ -1231,7 +1253,7 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 // Then it returns the path of the generated yaml file.
 // Example: helm template /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz
 // The return yaml file path will be /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz.yaml.
-func helmTemplateClusterAddon(chartPath string, helmTemplate []byte) ([]byte, error) {
+func helmTemplateClusterAddon(chartPath string, helmTemplate []byte, kubernetesVersion string) ([]byte, error) {
 	helmCommand := "helm"
 	helmArgs := []string{"template", "--include-crds"}
 
@@ -1239,7 +1261,7 @@ func helmTemplateClusterAddon(chartPath string, helmTemplate []byte) ([]byte, er
 
 	var cmdOutput bytes.Buffer
 
-	helmArgs = append(helmArgs, "cluster-addon", filepath.Base(chartPath), "--namespace", clusterAddonNamespace, "-f", "-")
+	helmArgs = append(helmArgs, "--kube-version", kubernetesVersion, "cluster-addon", filepath.Base(chartPath), "--namespace", clusterAddonNamespace, "-f", "-")
 	helmTemplateCmd := exec.Command(helmCommand, helmArgs...)
 	helmTemplateCmd.Stderr = os.Stderr
 	helmTemplateCmd.Dir = filepath.Dir(chartPath)
@@ -1273,66 +1295,46 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	logger := ctrl.LoggerFrom(ctx)
-	c, err := ctrl.NewControllerManagedBy(mgr).
+	blder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterAddon{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue)).
-		Build(r)
-	if err != nil {
-		return fmt.Errorf("error creating controller: %w", err)
-	}
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue))
 
 	// check also for updates in cluster objects
-	if err := c.Watch(
-		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
-		handler.EnqueueRequestsFromMapFunc(clusterToClusterAddon(ctx)),
-		predicate.Funcs{
-			// We're only interested in the update events for a cluster object where cluster.spec.topology.class changed
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldCluster, ok := e.ObjectOld.(*clusterv1.Cluster)
-				if !ok {
+	return blder.WatchesRawSource(
+		source.Kind(mgr.GetCache(), &clusterv1.Cluster{},
+			handler.TypedEnqueueRequestsFromMapFunc(clusterToClusterAddon),
+			predicate.TypedFuncs[*clusterv1.Cluster]{
+				// We're only interested in the update events for a cluster object where cluster.spec.topology.class changed
+				UpdateFunc: func(e event.TypedUpdateEvent[*clusterv1.Cluster]) bool {
+					oldCluster := e.ObjectOld
+					newCluster := e.ObjectNew
+					if oldCluster.Spec.Topology != nil && newCluster.Spec.Topology != nil &&
+						oldCluster.Spec.Topology.Class != newCluster.Spec.Topology.Class {
+						return true
+					}
 					return false
-				}
-
-				newCluster, ok := e.ObjectNew.(*clusterv1.Cluster)
-				if !ok {
+				},
+				GenericFunc: func(_ event.TypedGenericEvent[*clusterv1.Cluster]) bool {
 					return false
-				}
-
-				if oldCluster.Spec.Topology != nil && newCluster.Spec.Topology != nil &&
-					oldCluster.Spec.Topology.Class != newCluster.Spec.Topology.Class {
-					return true
-				}
-
-				return false
+				},
+				CreateFunc: func(_ event.TypedCreateEvent[*clusterv1.Cluster]) bool {
+					return false
+				},
+				DeleteFunc: func(_ event.TypedDeleteEvent[*clusterv1.Cluster]) bool {
+					return false
+				},
 			},
-			GenericFunc: func(_ event.GenericEvent) bool {
-				return false
-			},
-			CreateFunc: func(_ event.CreateEvent) bool {
-				return false
-			},
-			DeleteFunc: func(_ event.DeleteEvent) bool {
-				return false
-			},
-		},
-	); err != nil {
-		return fmt.Errorf("failed adding a watch for ready clusters: %w", err)
-	}
-
-	return nil
+		)).Complete(r)
 }
 
 // clusterToClusterAddon enqueues requests for clusterAddons on change of cluster objects.
-func clusterToClusterAddon(_ context.Context) handler.MapFunc {
-	return func(_ context.Context, o client.Object) []reconcile.Request {
-		clusterAddonName := types.NamespacedName{
-			Namespace: o.GetNamespace(),
-			Name:      fmt.Sprintf("cluster-addon-%s", o.GetName()),
-		}
-
-		return []reconcile.Request{{NamespacedName: clusterAddonName}}
+func clusterToClusterAddon(_ context.Context, c *clusterv1.Cluster) []ctrl.Request {
+	clusterAddonName := types.NamespacedName{
+		Namespace: c.GetNamespace(),
+		Name:      fmt.Sprintf("cluster-addon-%s", c.GetName()),
 	}
+	return []reconcile.Request{{NamespacedName: clusterAddonName}}
 }
 
 func unTarContent(src, dst string) error {

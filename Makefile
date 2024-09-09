@@ -81,7 +81,7 @@ MGT_CLUSTER_KUBECONFIG ?= ".mgt-cluster-kubeconfig.yaml"
 
 # Kubebuilder.
 export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.29.3
-# versions 
+# versions
 CTLPTL_VERSION := 0.8.25
 
 ##@ Binaries
@@ -91,7 +91,7 @@ CTLPTL_VERSION := 0.8.25
 # need in CI for releasing
 CONTROLLER_GEN := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
 $(CONTROLLER_GEN): # Build controller-gen from tools folder.
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.2
 
 # need this in CI for releasing
 KUSTOMIZE := $(abspath $(TOOLS_BIN_DIR)/kustomize)
@@ -304,7 +304,7 @@ $(WORKER_CLUSTER_KUBECONFIG):
 KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env --bin-dir $(abspath $(TOOLS_BIN_DIR)) -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
 
 .PHONY: test-integration
-test-integration: test-integration-workloadcluster  test-integration-github
+test-integration: test-integration-workloadcluster test-integration-github test-integration-oci
 	echo done
 
 .PHONY: test-unit
@@ -324,6 +324,12 @@ test-integration-github: $(SETUP_ENVTEST) $(GOTESTSUM)
 	@mkdir -p $(shell pwd)/.coverage
 	CREATE_KIND_CLUSTER=false KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
 	-covermode=atomic -coverprofile=.coverage/cover.out -p=1  ./internal/test/integration/github/...
+
+.PHONY: test-integration-oci
+test-integration-oci: $(SETUP_ENVTEST) $(GOTESTSUM)
+	@mkdir -p $(shell pwd)/.coverage
+	CREATE_KIND_CLUSTER=false KUBEBUILDER_ASSETS="$(KUBEBUILDER_ASSETS)" $(GOTESTSUM) --junitfile=.coverage/junit.xml --format testname -- -mod=vendor \
+	-covermode=atomic -coverprofile=.coverage/cover.out -p=1  ./internal/test/integration/oci/...
 
 ##@ Verify
 ##########
@@ -445,7 +451,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --out-format=github-actions
+	GO111MODULE=on golangci-lint run -v --out-format=colored-line-number
 endif
 
 .PHONY: lint-yaml

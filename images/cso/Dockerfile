@@ -15,7 +15,7 @@
 FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.15.1 as helm
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.21.6-bullseye as build
+FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.0-bullseye as build
 ARG TARGETOS TARGETARCH
 
 COPY . /src/cluster-stack-operator
