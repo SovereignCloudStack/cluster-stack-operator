@@ -138,7 +138,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	if err := r.Get(ctx, clusterName, cluster); err != nil {
 		if apierrors.IsNotFound(err) && !clusterAddon.DeletionTimestamp.IsZero() {
 			controllerutil.RemoveFinalizer(clusterAddon, csov1alpha1.ClusterAddonFinalizer)
-
+			fmt.Printf("Cluster %s/%s not found, removing finalizer from ClusterAddon %s/%s\n", clusterName.Namespace, clusterName.Name, clusterAddon.Namespace, clusterAddon.Name)
 			return reconcile.Result{}, nil
 		}
 

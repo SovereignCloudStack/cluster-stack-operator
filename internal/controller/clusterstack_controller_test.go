@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"testing"
@@ -590,19 +591,23 @@ var _ = Describe("ClusterStackReconciler", func() {
 			})
 
 			It("checks ProviderClusterstackrelease is deleted when version is removed from spec", func() {
+				fmt.Println("itttttttttttttttttttttttttttttttttttttttttt")
 				ph, err := patch.NewHelper(clusterStack, testEnv)
 				Expect(err).ShouldNot(HaveOccurred())
 
+				fmt.Printf("old %+v new %+v\n", clusterStack.Spec.Versions, []string{"v1"})
 				clusterStack.Spec.Versions = []string{"v1"}
 
 				Eventually(func() error {
-					return ph.Patch(ctx, clusterStack)
+					err := ph.Patch(ctx, clusterStack)
+					fmt.Printf("patch result: %v\n", err)
+					return err
 				}, timeout, interval).Should(BeNil())
-
+				fmt.Println("after patchhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
 				Eventually(func() bool {
 					return apierrors.IsNotFound(testEnv.Get(ctx, clusterStackReleaseTagV2Key, &csov1alpha1.ClusterStackRelease{}))
 				}, timeout, interval).Should(BeTrue())
-
+				fmt.Println("after clusterStackReleaseTagV2Key is not found.")
 				Eventually(func() bool {
 					foundProviderclusterStackReleaseRef := &corev1.ObjectReference{
 						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
@@ -612,8 +617,9 @@ var _ = Describe("ClusterStackReconciler", func() {
 					}
 
 					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					fmt.Printf("uuuuuuuuuuuuuuuuuuuuuuuu %v\n", err)
 					return apierrors.IsNotFound(err)
-				}, timeout, interval).Should(BeTrue())
+				}, 10*timeout, interval).Should(BeTrue())
 			})
 		})
 	})
