@@ -290,6 +290,8 @@ func (t *TestEnvironment) Stop() error {
 
 // Cleanup deletes client objects.
 func (t *TestEnvironment) Cleanup(ctx context.Context, objs ...client.Object) error {
+	// Deletion of Namespaces has limitations in envTests:
+	// https://book.kubebuilder.io/reference/envtest.html#namespace-usage-limitation
 	errs := make([]error, 0, len(objs))
 	for _, o := range objs {
 		err := t.Client.Delete(ctx, o)
@@ -300,24 +302,6 @@ func (t *TestEnvironment) Cleanup(ctx context.Context, objs ...client.Object) er
 			continue
 		}
 		errs = append(errs, err)
-	}
-	for _, o := range objs {
-		isDeleted := false
-		for i := 0; i < 10; i++ {
-			err := t.Client.Get(ctx, client.ObjectKeyFromObject(o), o)
-			if apierrors.IsNotFound(err) {
-				// nice, object is really gone
-				isDeleted = true
-				break
-			}
-			if i > 3 {
-				fmt.Printf("Deleted object still exists %s: %v\n", o.GetName(), err)
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		if !isDeleted {
-			errs = append(errs, fmt.Errorf("object %s/%s was not deleted", o.GetNamespace(), o.GetName()))
-		}
 	}
 	return kerrors.NewAggregate(errs)
 }
