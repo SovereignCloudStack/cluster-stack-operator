@@ -604,9 +604,11 @@ var _ = Describe("ClusterStackReconciler", func() {
 					return err
 				}, timeout, interval).Should(BeNil())
 				fmt.Println("after patchhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
+
 				Eventually(func() bool {
 					return apierrors.IsNotFound(testEnv.Get(ctx, clusterStackReleaseTagV2Key, &csov1alpha1.ClusterStackRelease{}))
 				}, timeout, interval).Should(BeTrue())
+
 				fmt.Println("after clusterStackReleaseTagV2Key is not found.")
 				Eventually(func() bool {
 					foundProviderclusterStackReleaseRef := &corev1.ObjectReference{
@@ -616,10 +618,25 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
-					fmt.Printf("uuuuuuuuuuuuuuuuuuuuuuuu %v\n", err)
-					return apierrors.IsNotFound(err)
-				}, 10*timeout, interval).Should(BeTrue())
+					obj, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					if apierrors.IsNotFound(err) {
+						return true
+					}
+					var msg string
+					if err != nil {
+						msg = "err: " + err.Error()
+					} else {
+						ts := obj.GetDeletionTimestamp()
+						if ts == nil {
+							msg = "DeletionTimestamp is nil"
+						} else {
+							msg = "Del: " + obj.GetDeletionTimestamp().String()
+						}
+						msg += fmt.Sprintf("OwnerRefs: %+v", obj.GetOwnerReferences())
+					}
+					fmt.Printf("uuuuuuuuuuuuuuuuuuuuuuuu %s\n", msg)
+					return false
+				}, 5*timeout, interval).Should(BeTrue())
 			})
 		})
 	})
