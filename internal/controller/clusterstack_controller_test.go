@@ -535,54 +535,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 
 				clusterStackReleaseTagV1Key = types.NamespacedName{Name: clusterStackReleaseTagV1, Namespace: testNs.Name}
 				clusterStackReleaseTagV2Key = types.NamespacedName{Name: clusterStackReleaseTagV2, Namespace: testNs.Name}
-
-				Eventually(func() bool {
-					providerObj1, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
-						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
-						Kind:       "TestInfrastructureProviderClusterStackRelease",
-						Name:       clusterStackReleaseTagV1,
-						Namespace:  testNs.Name,
-					}, testNs.Name)
-					if err != nil {
-						fmt.Printf("clusterStackReleaseTagV1 not found. %s\n", err.Error())
-						return false
-					}
-					fmt.Printf("foundProviderclusterStackReleaseRef is found. %s Finalizers: %+v OwnerRefs: %+v\n",
-						providerObj1.GetName(), providerObj1.GetFinalizers(), providerObj1.GetOwnerReferences())
-					if len(providerObj1.GetOwnerReferences()) == 0 {
-						fmt.Printf("    Missing finalizer/ownerRefs\n")
-						return false
-					}
-					csoObj1 := &csov1alpha1.ClusterStackRelease{}
-					err = testEnv.Get(ctx, clusterStackReleaseTagV1Key, csoObj1)
-					if err != nil {
-						fmt.Printf("clusterStackReleaseTagV1 not found. %s\n", err.Error())
-						return false
-					}
-					return true
-				}, 2*timeout, interval).Should(BeTrue())
-
-				Eventually(func() bool {
-					providerObj2, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
-						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
-						Kind:       "TestInfrastructureProviderClusterStackRelease",
-						Name:       clusterStackReleaseTagV2,
-						Namespace:  testNs.Name,
-					}, testNs.Name)
-					if err != nil {
-						fmt.Printf("clusterStackReleaseTagV1 not found. %s\n", err.Error())
-						return false
-					}
-					fmt.Printf("foundProviderclusterStackReleaseRef is found. %s %+v %+v\n",
-						providerObj2.GetName(), providerObj2.GetFinalizers(), providerObj2.GetOwnerReferences())
-					csoObj2 := &csov1alpha1.ClusterStackRelease{}
-					err = testEnv.Get(ctx, clusterStackReleaseTagV2Key, csoObj2)
-					if err != nil {
-						fmt.Printf("clusterStackReleaseTagV2 not found. %s\n", err.Error())
-						return false
-					}
-					return true
-				}, timeout, interval).Should(BeTrue())
+				waitUntilChildObjectsAreCreated(clusterStack)
 			})
 
 			AfterEach(func() {
@@ -975,3 +928,40 @@ var _ = Describe("clusterStack validation", func() {
 		})
 	})
 })
+
+func waitUntilChildObjectsAreCreated(cs *csov1alpha1.ClusterStack) {
+	providerKind := "TestInfrastructureProviderClusterStackRelease"
+	for _, csrVersion := range cs.Spec.Versions {
+		csoClusterStack, err := clusterstack.New(cs.Spec.Provider, cs.Spec.Name, cs.Spec.KubernetesVersion, csrVersion)
+		Expect(err).To(BeNil())
+		key := types.NamespacedName{Name: csoClusterStack.String(), Namespace: cs.Namespace}
+		Eventually(func() error {
+			return testEnv.Get(ctx, key, &csov1alpha1.ClusterStackRelease{})
+		}, 3*timeout, interval).Should(BeNil())
+		Eventually(func() bool {
+			providerObj, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
+				APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+				Kind:       providerKind,
+				Name:       csoClusterStack.String(),
+				Namespace:  cs.Namespace,
+			}, cs.Namespace)
+			if err != nil {
+				fmt.Printf("%s %s not found. %s\n", providerKind, csoClusterStack.String(), err.Error())
+				return false
+			}
+			fmt.Printf("foundProviderclusterStackReleaseRef is found. %s Finalizers: %+v OwnerRefs: %+v\n",
+				providerObj.GetName(), providerObj.GetFinalizers(), providerObj.GetOwnerReferences())
+			if len(providerObj.GetOwnerReferences()) == 0 {
+				fmt.Printf("    Missing ownerRefs\n")
+				return false
+			}
+			csoObj := &csov1alpha1.ClusterStackRelease{}
+			err = testEnv.Get(ctx, key, csoObj)
+			if err != nil {
+				fmt.Printf("ClusterStackRelease %s not found. %s\n", csoClusterStack.Name, err.Error())
+				return false
+			}
+			return true
+		}, timeout, interval).Should(BeTrue())
+	}
+}
