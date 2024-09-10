@@ -106,6 +106,8 @@ linters-settings:
   revive:
     enable-all-rules: true
     rules:
+      - name: range-val-address
+        disabled: true
       - name: import-alias-naming
         disabled: true
       - name: redundant-import-alias

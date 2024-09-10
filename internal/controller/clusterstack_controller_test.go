@@ -591,10 +591,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}, timeout, interval).Should(BeNil())
 			})
 
-			/////////////////////////////////////////////////////////////////////
-			// Flaky test
 			FIt("checks ProviderClusterstackrelease is deleted when version is removed from spec", func() {
-				fmt.Println("itttttttttttttttttttttttttttttttttttttttttt")
 				ph, err := patch.NewHelper(clusterStack, testEnv)
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -653,6 +650,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 
 				// wait until clusterStackRelease V2 is deleted
 				// This delete propagation (From CS spec.versions --> ClusterStackRelease) is done by our controller (not Kubernetes GC)
+				// We can't check for the deletion of the providerClusterStackRelease, because in envTests there is no GC.
 				Eventually(func() bool {
 					obj := csov1alpha1.ClusterStackRelease{}
 					err := testEnv.Get(ctx, clusterStackReleaseTagV2Key, &obj)
