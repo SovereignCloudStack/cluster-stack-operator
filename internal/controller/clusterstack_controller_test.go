@@ -591,7 +591,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}, timeout, interval).Should(BeNil())
 			})
 
-			FIt("checks ProviderClusterstackrelease is deleted when version is removed from spec", func() {
+			It("checks ProviderClusterstackrelease is deleted when version is removed from spec", func() {
 				ph, err := patch.NewHelper(clusterStack, testEnv)
 				Expect(err).ShouldNot(HaveOccurred())
 
