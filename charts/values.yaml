@@ -1,0 +1,11 @@
+image:
+  repository: ghcr.io/sovereigncloudstack/cso-staging
+  pullPolicy: IfNotPresent
+  tag: "sha-c797c2e"
+source: "oci"
+oci:
+  registry: "registry.scs.community"
+  repository: "registry.scs.community/csctl-oci/openstack"
+  access_token: ""
+  username: ""
+  password: ""
