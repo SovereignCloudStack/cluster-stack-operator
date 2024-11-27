@@ -27,8 +27,6 @@ spec:
       containers:
         - command:
             - /manager
-          args:
-            - --leader-elect=true
           env:
             - name: GIT_PROVIDER
               valueFrom:
@@ -50,6 +48,34 @@ spec:
                 secretKeyRef:
                   name: cso-cluster-stack-variables
                   key: git-access-token
+            - name: OCI_REGISTRY
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: oci-registry
+            - name: OCI_REPOSITORY
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: oci-repository
+            - name: OCI_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: oci-access-token
+            - name: OCI_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: oci-username
+            - name: OCI_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cso-cluster-stack-variables
+                  key: oci-password
+          args:
+            - --leader-elect=true
+            - --log-level=info
           image: controller:latest
           name: manager
           ports:

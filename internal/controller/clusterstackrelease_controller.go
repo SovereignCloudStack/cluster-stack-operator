@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,8 +28,8 @@ import (
 	"time"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
-	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/release"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -57,7 +56,7 @@ type ClusterStackReleaseReconciler struct {
 	RESTConfig                            *rest.Config
 	ReleaseDirectory                      string
 	KubeClientFactory                     kube.Factory
-	GitHubClientFactory                   githubclient.Factory
+	AssetsClientFactory                   assetsclient.Factory
 	externalTracker                       external.ObjectTracker
 	clusterStackRelDownloadDirectoryMutex sync.Mutex
 	WatchFilterValue                      string
@@ -108,7 +107,10 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 
 	releaseAssets, download, err := release.New(releaseTag, r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(clusterStackRelease,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError, "%s", err.Error())
 		return reconcile.Result{RequeueAfter: 1 * time.Minute}, fmt.Errorf("failed to create release: %w", err)
 	}
 
@@ -116,27 +118,32 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 	if download {
 		conditions.MarkFalse(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.ReleaseAssetsNotDownloadedYetReason, clusterv1.ConditionSeverityInfo, "assets not downloaded yet")
 
-		// this is the point where we download the release from github
+		// this is the point where we download the release
 		// acquire lock so that only one reconcile loop can download the release
 		r.clusterStackRelDownloadDirectoryMutex.Lock()
-
 		defer r.clusterStackRelDownloadDirectoryMutex.Unlock()
 
-		gc, err := r.GitHubClientFactory.NewClient(ctx)
+		ac, err := r.AssetsClientFactory.NewClient(ctx)
 		if err != nil {
+			isSet := conditions.IsFalse(clusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
 			conditions.MarkFalse(clusterStackRelease,
-				csov1alpha1.GitAPIAvailableCondition,
-				csov1alpha1.GitTokenOrEnvVariableNotSetReason,
+				csov1alpha1.AssetsClientAPIAvailableCondition,
+				csov1alpha1.FailedCreateAssetsClientReason,
 				clusterv1.ConditionSeverityError,
-				err.Error(),
+				"%s", err.Error(),
 			)
-			record.Warnf(clusterStackRelease, "GitTokenOrEnvVariableNotSet", err.Error())
-			return reconcile.Result{}, fmt.Errorf("failed to create Github client: %w", err)
+			record.Warn(clusterStackRelease, "FailedCreateAssetsClient", err.Error())
+
+			// give the assets client a second change
+			if isSet {
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+			}
+			return reconcile.Result{}, nil
 		}
 
-		conditions.MarkTrue(clusterStackRelease, csov1alpha1.GitAPIAvailableCondition)
+		conditions.MarkTrue(clusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
 
-		if err := downloadReleaseAssets(ctx, releaseTag, releaseAssets.LocalDownloadPath, gc); err != nil {
+		if err := downloadReleaseAssets(ctx, releaseTag, releaseAssets.LocalDownloadPath, ac); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to download release assets: %w", err)
 		}
 
@@ -207,26 +214,20 @@ func (r *ClusterStackReleaseReconciler) reconcileDelete(ctx context.Context, rel
 		return reconcile.Result{}, fmt.Errorf("failed to perform helm template: %w", err)
 	}
 
-	if err := kubeClient.Delete(template); err != nil {
+	_, shouldRequeue, err := kubeClient.Delete(ctx, template, clusterStackReleaseCR.Status.Resources)
+	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to delete helm chart: %w", err)
+	}
+	if shouldRequeue {
+		return reconcile.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
 	}
 
 	controllerutil.RemoveFinalizer(clusterStackReleaseCR, csov1alpha1.ClusterStackReleaseFinalizer)
 	return reconcile.Result{}, nil
 }
 
-func downloadReleaseAssets(ctx context.Context, releaseTag, downloadPath string, gc githubclient.Client) error {
-	repoRelease, resp, err := gc.GetReleaseByTag(ctx, releaseTag)
-	if err != nil {
-		return fmt.Errorf("failed to fetch release tag %q: %w", releaseTag, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch release tag %s with status code %d", releaseTag, resp.StatusCode)
-	}
-
-	assetlist := []string{"metadata.yaml", "cluster-addon-values.yaml", "cluster-addon", "cluster-class"}
-
-	if err := gc.DownloadReleaseAssets(ctx, repoRelease, downloadPath, assetlist); err != nil {
+func downloadReleaseAssets(ctx context.Context, releaseTag, downloadPath string, ac assetsclient.Client) error {
+	if err := ac.DownloadReleaseAssets(ctx, releaseTag, downloadPath); err != nil {
 		// if download failed for some reason, delete the release directory so that it can be retried in the next reconciliation
 		if err := os.RemoveAll(downloadPath); err != nil {
 			return fmt.Errorf("failed to remove release: %w", err)

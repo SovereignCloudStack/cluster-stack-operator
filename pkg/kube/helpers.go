@@ -70,6 +70,21 @@ const (
 	ObjectLabelValueOwned = "owned"
 )
 
+// GetResourcesFromHelmTemplate returns a slice of resources based on the outcome of a slice of bytes from helm template.
+func GetResourcesFromHelmTemplate(template []byte) ([]*csov1alpha1.Resource, error) {
+	objects, err := parseK8sYaml(template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resources from template: %w", err)
+	}
+
+	resources := make([]*csov1alpha1.Resource, 0, len(objects))
+	for _, obj := range objects {
+		resources = append(resources, csov1alpha1.NewResourceFromUnstructured(obj))
+	}
+
+	return resources, nil
+}
+
 func parseK8sYaml(template []byte) ([]*unstructured.Unstructured, error) {
 	multidocReader := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(template)))
 	var objs []*unstructured.Unstructured
@@ -178,7 +193,8 @@ func setLabel(target *unstructured.Unstructured, key, val string) error {
 	return nil
 }
 
-func getDynamicResourceInterface(namespace string, restConfig *rest.Config, group schema.GroupVersionKind) (dynamic.ResourceInterface, error) {
+// GetDynamicResourceInterface returns a dynamic.ResourceInterface based on the groupVersionKind and namespace.
+func GetDynamicResourceInterface(namespace string, restConfig *rest.Config, group schema.GroupVersionKind) (dynamic.ResourceInterface, error) {
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error creating dynamic client: %w", err)
@@ -232,6 +248,29 @@ func resourcesToBeDeleted(oldResources []*csov1alpha1.Resource, currentObjs []*u
 			}
 		}
 	}
+	return toBeDeleted
+}
+
+func resourcesToBeDeletedFromUnstructuredObjects(oldObjects, newObjects []*unstructured.Unstructured) []*unstructured.Unstructured {
+	toBeDeleted := make([]*unstructured.Unstructured, 0, len(oldObjects))
+
+	newObjectMap := make(map[types.NamespacedName]struct{})
+	for _, newObj := range newObjects {
+		newObjectMap[types.NamespacedName{Name: newObj.GetName(), Namespace: newObj.GetNamespace()}] = struct{}{}
+	}
+
+	for i, oldObj := range oldObjects {
+		nameSpacedName := types.NamespacedName{
+			Name:      oldObj.GetName(),
+			Namespace: oldObj.GetNamespace(),
+		}
+
+		// delete resources that are not listed in the new objects anymore
+		if _, found := newObjectMap[nameSpacedName]; !found {
+			toBeDeleted = append(toBeDeleted, oldObjects[i])
+		}
+	}
+
 	return toBeDeleted
 }
 

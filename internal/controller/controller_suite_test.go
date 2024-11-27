@@ -58,14 +58,14 @@ var _ = BeforeSuite(func() {
 	Expect((&ClusterStackReconciler{
 		Client:              testEnv.Manager.GetClient(),
 		ReleaseDirectory:    "./../../test/releases",
-		GitHubClientFactory: testEnv.GitHubClientFactory,
+		AssetsClientFactory: testEnv.AssetsClientFactory,
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
 
 	Expect((&ClusterStackReleaseReconciler{
 		Client:              testEnv.Manager.GetClient(),
 		RESTConfig:          testEnv.Manager.GetConfig(),
 		KubeClientFactory:   kube.NewFactory(),
-		GitHubClientFactory: testEnv.GitHubClientFactory,
+		AssetsClientFactory: testEnv.AssetsClientFactory,
 		ReleaseDirectory:    "./../../test/releases",
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
 

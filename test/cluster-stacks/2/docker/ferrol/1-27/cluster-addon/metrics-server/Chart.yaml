@@ -1,0 +1,16 @@
+apiVersion: v2
+type: application
+description: |
+  This chart installs and configures:
+  * Docker Ferrol Cluster Class
+name: docker-ferrol-1-27-cluster-addon
+version: << .ClusterAddonVersion >>
+maintainers:
+  - name: Syself
+    email: info@syself.com
+    url: https://github.com/syself
+dependencies:
+  - name: "metrics-server"
+    version: "3.11.0"
+    repository: "https://kubernetes-sigs.github.io/metrics-server/"
+    alias: "metrics-server"

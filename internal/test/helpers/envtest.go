@@ -31,8 +31,8 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/test/helpers/builder"
-	githubclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client"
-	githubmocks "github.com/SovereignCloudStack/cluster-stack-operator/pkg/github/client/mocks"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient"
+	assetsclientmocks "github.com/SovereignCloudStack/cluster-stack-operator/pkg/assetsclient/mocks"
 	kubeclient "github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	kubemocks "github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube/mocks"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/test/utils"
@@ -147,9 +147,9 @@ type (
 		cancel                context.CancelFunc
 		kind                  *kind.Provider
 		WorkloadClusterClient *kubernetes.Clientset
-		GitHubClientFactory   githubclient.Factory
+		AssetsClientFactory   assetsclient.Factory
 		KubeClientFactory     kubeclient.Factory
-		GitHubClient          *githubmocks.Client
+		AssetsClient          *assetsclientmocks.Client
 		KubeClient            *kubemocks.Client
 	}
 )
@@ -203,16 +203,16 @@ func NewTestEnvironment() *TestEnvironment {
 		klog.Fatalf("unable to create manager pod namespace: %s", err)
 	}
 
-	githubClient := &githubmocks.Client{}
+	assetsClient := &assetsclientmocks.Client{}
 	kubeClient := &kubemocks.Client{}
 
 	testEnv := &TestEnvironment{
 		Manager:             mgr,
 		Client:              mgr.GetClient(),
 		Config:              mgr.GetConfig(),
-		GitHubClientFactory: githubmocks.NewGitHubFactory(githubClient),
+		AssetsClientFactory: assetsclientmocks.NewAssetsClientFactory(assetsClient),
 		KubeClientFactory:   kubemocks.NewKubeFactory(kubeClient),
-		GitHubClient:        githubClient,
+		AssetsClient:        assetsClient,
 		KubeClient:          kubeClient,
 	}
 

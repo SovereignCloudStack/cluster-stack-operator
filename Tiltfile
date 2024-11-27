@@ -66,7 +66,6 @@ def deploy_capd():
     cmd = "curl -sSL {} | {} | kubectl apply -f -".format(capd_uri, envsubst_cmd)
     local(cmd, quiet = True)
 
-
 def prepare_environment():
     local("kubectl create namespace cluster --dry-run=client -o yaml | kubectl apply -f -")
 

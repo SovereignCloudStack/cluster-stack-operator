@@ -26,3 +26,20 @@ spec:
   subject:
     organizations:
     - k8s-sig-cluster-lifecycle
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hook-server-server-cert  # this name should match the one appeared in kustomizeconfig.yaml
+  namespace: system
+spec:
+  dnsNames:
+  - $(HOOK_SERVER_SERVICE_NAME).$(HOOK_SERVER_SERVICE_NAMESPACE).svc
+  - $(HOOK_SERVER_SERVICE_NAME).$(HOOK_SERVER_SERVICE_NAMESPACE).svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: selfsigned-issuer
+  secretName: cso-hook-server-server-cert  # this secret will not be prefixed, since it's not managed by kustomize
+  subject:
+    organizations:
+    - k8s-sig-cluster-lifecycle

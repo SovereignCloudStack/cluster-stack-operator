@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        ports:
+        - containerPort: 9442
+          name: hook-server-svc
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /tmp/k8s-hook-server/serving-certs
+          name: hook-server-cert
+          readOnly: true
+      volumes:
+      - name: hook-server-cert
+        secret:
+          defaultMode: 420
+          secretName: cso-hook-server-server-cert

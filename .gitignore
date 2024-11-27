@@ -82,3 +82,6 @@ main
 *.tgz.yaml
 *.build.yaml
 .release
+
+# .config/go/telemetry/local/
+.config
