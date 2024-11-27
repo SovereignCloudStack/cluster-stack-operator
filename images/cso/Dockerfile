@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.16.2 as helm
+FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.16.3 as helm
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.2-bullseye as build
+FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.3-bullseye as build
 ARG TARGETOS TARGETARCH
 
 COPY . /src/cluster-stack-operator
