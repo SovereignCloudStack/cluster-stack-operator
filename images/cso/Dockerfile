@@ -15,7 +15,7 @@
 FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.16.3 as helm
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.3-bullseye as build
+FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.4-bullseye as build
 ARG TARGETOS TARGETARCH
 
 COPY . /src/cluster-stack-operator
@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache --mount=type=cache,target=/go/pkg \
     go build -mod=vendor -ldflags "${LDFLAGS} -extldflags '-static'" \
     -o manager cmd/main.go
 
-FROM --platform=${BUILDPLATFORM} docker.io/library/alpine:3.20.3
+FROM --platform=${BUILDPLATFORM} docker.io/library/alpine:3.21.0
 WORKDIR /
 COPY --from=build /src/cluster-stack-operator/manager .
 COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
