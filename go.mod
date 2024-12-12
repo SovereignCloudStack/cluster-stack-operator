@@ -2,7 +2,7 @@ module github.com/SovereignCloudStack/cluster-stack-operator
 
 go 1.22.0
 
-toolchain go1.23.3
+toolchain go1.23.4
 
 require (
 	github.com/go-logr/logr v1.4.2
@@ -10,7 +10,7 @@ require (
 	github.com/google/cel-go v0.22.1
 	github.com/google/go-github/v52 v52.0.0
 	github.com/onsi/ginkgo/v2 v2.22.0
-	github.com/onsi/gomega v1.36.0
+	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/mod v0.22.0
 	golang.org/x/oauth2 v0.24.0
@@ -22,7 +22,7 @@ require (
 	oras.land/oras-go/v2 v2.5.0
 	sigs.k8s.io/cluster-api v1.8.1
 	sigs.k8s.io/cluster-api/test v1.8.1
-	sigs.k8s.io/controller-runtime v0.18.5
+	sigs.k8s.io/controller-runtime v0.18.6
 	sigs.k8s.io/kind v0.25.0
 )
 
@@ -64,7 +64,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.0 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-logr/zapr v1.3.0
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
