@@ -7,13 +7,13 @@ toolchain go1.23.4
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
-	github.com/google/cel-go v0.22.1
+	github.com/google/cel-go v0.23.1
 	github.com/google/go-github/v52 v52.0.0
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/mod v0.22.0
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.25.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/cli-runtime v0.30.3
@@ -23,11 +23,11 @@ require (
 	sigs.k8s.io/cluster-api v1.8.1
 	sigs.k8s.io/cluster-api/test v1.8.1
 	sigs.k8s.io/controller-runtime v0.18.6
-	sigs.k8s.io/kind v0.25.0
+	sigs.k8s.io/kind v0.26.0
 )
 
 require (
-	cel.dev/expr v0.18.0 // indirect
+	cel.dev/expr v0.19.1 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/alessio/shellescape v1.4.2 // indirect
