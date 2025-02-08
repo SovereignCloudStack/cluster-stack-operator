@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"testing"
@@ -534,6 +535,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 
 				clusterStackReleaseTagV1Key = types.NamespacedName{Name: clusterStackReleaseTagV1, Namespace: testNs.Name}
 				clusterStackReleaseTagV2Key = types.NamespacedName{Name: clusterStackReleaseTagV2, Namespace: testNs.Name}
+				waitUntilChildObjectsAreCreated(clusterStack)
 			})
 
 			AfterEach(func() {
@@ -593,26 +595,78 @@ var _ = Describe("ClusterStackReconciler", func() {
 				ph, err := patch.NewHelper(clusterStack, testEnv)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterStack.Spec.Versions = []string{"v1"}
+				providerclusterStackReleaseRefV2 := &corev1.ObjectReference{
+					APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+					Kind:       "TestInfrastructureProviderClusterStackRelease",
+					Name:       clusterStackReleaseTagV2,
+					Namespace:  testNs.Name,
+				}
 
-				Eventually(func() error {
-					return ph.Patch(ctx, clusterStack)
-				}, timeout, interval).Should(BeNil())
-
+				// Wait until the ProviderClusterStackRelease is created
+				// Check for the correct ownerRef
 				Eventually(func() bool {
-					return apierrors.IsNotFound(testEnv.Get(ctx, clusterStackReleaseTagV2Key, &csov1alpha1.ClusterStackRelease{}))
+					obj, err := external.Get(ctx, testEnv.GetClient(), providerclusterStackReleaseRefV2, testNs.Name)
+					if apierrors.IsNotFound(err) {
+						fmt.Printf("   providerclusterStackReleaseRefV2 not found (retry). %s\n", err.Error())
+						return false
+					}
+					if err != nil {
+						fmt.Printf("   get providerclusterStackReleaseRefV2: error (retry). %s\n", err.Error())
+						return false
+					}
+					if obj.GetDeletionTimestamp() != nil {
+						// in envTests there is not GC: If the parent-objects gets deleted, the child-objects are not updated..
+						fmt.Printf("   I am confused. providerclusterStackReleaseRefV2 has a deletionTimestamp? (retry). %s\n", obj.GetDeletionTimestamp())
+						return false
+					}
+					owners := obj.GetOwnerReferences()
+					fmt.Printf("    providerclusterStackReleaseRefV2 found: Finalizers %+v OwnerRefs: %+v Kind: %s, uuid: %s\n", obj.GetFinalizers(), owners,
+						obj.GetKind(), obj.GetUID())
+					if len(obj.GetOwnerReferences()) == 0 {
+						fmt.Printf("    Missing finalizer/ownerRefs\n")
+						return false
+					}
+					if len(obj.GetOwnerReferences()) > 1 {
+						fmt.Printf("    Too many ownerRefs?\n")
+						return false
+					}
+					ownerRef := obj.GetOwnerReferences()[0]
+					if ownerRef.APIVersion != "clusterstack.x-k8s.io/v1alpha1" || ownerRef.Kind != "ClusterStackRelease" ||
+						ownerRef.Name != "docker-ferrol-1-27-v2" || !*ownerRef.Controller || !*ownerRef.BlockOwnerDeletion {
+						fmt.Printf("    I am confused, wrong ownerRef: %+v\n", ownerRef)
+						return false
+					}
+					return true
 				}, timeout, interval).Should(BeTrue())
 
+				fmt.Printf("old %+v new %+v\n", clusterStack.Spec.Versions, []string{"v1"})
+				clusterStack.Spec.Versions = []string{"v1"}
+
+				// remove v2 from CS
+				Eventually(func() error {
+					err := ph.Patch(ctx, clusterStack)
+					return err
+				}, timeout, interval).Should(BeNil())
+
+				// wait until clusterStackRelease V2 is deleted
+				// This delete propagation (From CS spec.versions --> ClusterStackRelease) is done by our controller (not Kubernetes GC)
+				// We can't check for the deletion of the providerClusterStackRelease, because in envTests there is no GC.
 				Eventually(func() bool {
-					foundProviderclusterStackReleaseRef := &corev1.ObjectReference{
-						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
-						Kind:       "TestInfrastructureProviderClusterStackRelease",
-						Name:       clusterStackReleaseTagV2,
-						Namespace:  testNs.Name,
+					obj := csov1alpha1.ClusterStackRelease{}
+					err := testEnv.Get(ctx, clusterStackReleaseTagV2Key, &obj)
+
+					if apierrors.IsNotFound(err) {
+						fmt.Printf("    clusterStackReleaseTagV2Key was deleted (good): %s\n", err.Error())
+						return true
 					}
 
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
-					return apierrors.IsNotFound(err)
+					if err != nil {
+						fmt.Printf("    clusterStackReleaseTagV2Key error (retry). %s\n", err.Error())
+						return false
+					}
+					fmt.Printf("    clusterStackReleaseTagV2Key is found (will retry). %s Finalizers: %+v OwnerRefs %+v DelTimestamp: %v\n", obj.GetName(), obj.GetFinalizers(), obj.GetOwnerReferences(),
+						obj.GetDeletionTimestamp())
+					return false
 				}, timeout, interval).Should(BeTrue())
 			})
 		})
@@ -872,3 +926,40 @@ var _ = Describe("clusterStack validation", func() {
 		})
 	})
 })
+
+func waitUntilChildObjectsAreCreated(cs *csov1alpha1.ClusterStack) {
+	providerKind := "TestInfrastructureProviderClusterStackRelease"
+	for _, csrVersion := range cs.Spec.Versions {
+		csoClusterStack, err := clusterstack.New(cs.Spec.Provider, cs.Spec.Name, cs.Spec.KubernetesVersion, csrVersion)
+		Expect(err).To(BeNil())
+		key := types.NamespacedName{Name: csoClusterStack.String(), Namespace: cs.Namespace}
+		Eventually(func() error {
+			return testEnv.Get(ctx, key, &csov1alpha1.ClusterStackRelease{})
+		}, 3*timeout, interval).Should(BeNil())
+		Eventually(func() bool {
+			providerObj, err := external.Get(ctx, testEnv.GetClient(), &corev1.ObjectReference{
+				APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+				Kind:       providerKind,
+				Name:       csoClusterStack.String(),
+				Namespace:  cs.Namespace,
+			}, cs.Namespace)
+			if err != nil {
+				fmt.Printf("%s %s not found. %s\n", providerKind, csoClusterStack.String(), err.Error())
+				return false
+			}
+			fmt.Printf("foundProviderclusterStackReleaseRef is found. %s Finalizers: %+v OwnerRefs: %+v\n",
+				providerObj.GetName(), providerObj.GetFinalizers(), providerObj.GetOwnerReferences())
+			if len(providerObj.GetOwnerReferences()) == 0 {
+				fmt.Printf("    Missing ownerRefs\n")
+				return false
+			}
+			csoObj := &csov1alpha1.ClusterStackRelease{}
+			err = testEnv.Get(ctx, key, csoObj)
+			if err != nil {
+				fmt.Printf("ClusterStackRelease %s not found. %s\n", csoClusterStack.Name, err.Error())
+				return false
+			}
+			return true
+		}, timeout, interval).Should(BeTrue())
+	}
+}

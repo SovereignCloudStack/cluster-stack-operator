@@ -290,6 +290,8 @@ func (t *TestEnvironment) Stop() error {
 
 // Cleanup deletes client objects.
 func (t *TestEnvironment) Cleanup(ctx context.Context, objs ...client.Object) error {
+	// Deletion of Namespaces has limitations in envTests:
+	// https://book.kubebuilder.io/reference/envtest.html#namespace-usage-limitation
 	errs := make([]error, 0, len(objs))
 	for _, o := range objs {
 		err := t.Client.Delete(ctx, o)
