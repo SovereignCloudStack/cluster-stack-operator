@@ -78,10 +78,3 @@ jobs:
           GO111MODULE: "on"
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
         run: make test-integration-github
-
-      # - name: Running integration tests oci
-      #   env:
-      #     OCI_REGISTRY: registry.scs.community
-      #     OCI_REPOSITORY: registry.scs.community/csctl-oci/docker
-      #     GO111MODULE: "on"
-      #   run: make test-integration-oci
