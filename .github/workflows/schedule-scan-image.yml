@@ -8,7 +8,7 @@ jobs:
   scan:
     name: Trivy
     runs-on: ubuntu-latest
-    container:
+    container
       image: ghcr.io/sovereigncloudstack/cso-builder:1.1.28
       credentials:
         username: ${{ github.actor }}
