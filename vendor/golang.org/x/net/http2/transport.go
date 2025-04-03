@@ -1452,13 +1452,6 @@ func (cs *clientStream) writeRequest(req *http.Request, streamf func(*clientStre
 		isExtendedConnect = true
 	}
 
-	// wait for setting frames to be received, a server can change this value later,
-	// but we just wait for the first settings frame
-	var isExtendedConnect bool
-	if req.Method == "CONNECT" && req.Header.Get(":protocol") != "" {
-		isExtendedConnect = true
-	}
-
 	// Acquire the new-request lock by writing to reqHeaderMu.
 	// This lock guards the critical section covering allocating a new stream ID
 	// (requires mu) and creating the stream (requires wmu).
@@ -2315,9 +2308,6 @@ func (rl *clientConnReadLoop) run() error {
 		if err != nil {
 			if VerboseLogs {
 				cc.vlogf("http2: Transport conn %p received error from processing frame %v: %v", cc, summarizeFrame(f), err)
-			}
-			if !cc.seenSettings {
-				close(cc.seenSettingsChan)
 			}
 			return err
 		}

@@ -2276,9 +2276,6 @@ func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*res
 	if rp.Protocol != "" {
 		header.Set(":protocol", rp.Protocol)
 	}
-	if rp.protocol != "" {
-		rp.header.Set(":protocol", rp.protocol)
-	}
 
 	rw, req, err := sc.newWriterAndRequestNoBody(st, rp)
 	if err != nil {
