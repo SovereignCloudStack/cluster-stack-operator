@@ -16,7 +16,7 @@ controllerManager:
       - --log-level=info
     image:
       repository: ghcr.io/sovereigncloudstack/cso
-      tag: v0.1.0-alpha.8
+      tag: v0.1.0-alpha.9
     imagePullPolicy: Always
     resources:
       limits:
