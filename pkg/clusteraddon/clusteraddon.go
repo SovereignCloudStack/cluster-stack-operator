@@ -18,7 +18,6 @@ limitations under the License.
 package clusteraddon
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,9 +27,6 @@ import (
 
 // Action is the type for helm chart action (e.g. - apply, delete).
 type Action string
-
-// ErrConditionNotMatch is used when the specified CEL expression doesn't match in the stage.
-var ErrConditionNotMatch = errors.New("condition don't match")
 
 var (
 	// Apply applies a helm chart.
