@@ -17,7 +17,7 @@
 # If you make changes to this Dockerfile run `make builder-image-push`.
 
 # Install Lychee
-FROM docker.io/library/alpine:3.20.2 AS lychee
+FROM docker.io/library/alpine:3.21.3 AS lychee
 # update: datasource=github-tags depName=lycheeverse/lychee versioning=semver
 ENV LYCHEE_VERSION="v0.15.1"
 # hadolint ignore=DL3018
@@ -34,7 +34,7 @@ FROM cgr.dev/chainguard/wolfi-base:latest AS wolfi
 # update: datasource=github-tags depName=kubernetes-sigs/cluster-api
 ARG CLUSTERCTL_VERSION="v1.8.1"
 # update: datasource=github-tags depName=helm/helm
-ENV HELM_VERSION="v3.14.1"
+ENV HELM_VERSION="v3.17.2"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
 ARG KIND_VERSION="v0.24.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
@@ -58,27 +58,27 @@ RUN apk add -U --no-cache \
     trivy=~${TRIVY_VERSION#v}
 
 # Install Golang CI Lint
-FROM docker.io/library/alpine:3.20.2 AS golangci
+FROM docker.io/library/alpine:3.21.3 AS golangci
 # update: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-ENV GOLANGCI_VERSION="v1.60.3"
+ENV GOLANGCI_VERSION="v2.0.2"
 WORKDIR /
 # hadolint ignore=DL3018,DL4006
 RUN apk add --no-cache curl && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s ${GOLANGCI_VERSION}
 
 # Install Hadolint
-FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:7dba9a9f1a0350f6d021fb2f6f88900998a4fb0aaf8e4330aa8c38544f04db42 AS hadolint
+FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:3c206a451cec6d486367e758645269fd7d696c5ccb6ff59d8b03b0e45268a199 AS hadolint
 
 # Install Trivy
-FROM docker.io/aquasec/trivy:0.54.1 AS trivy
+FROM docker.io/aquasec/trivy:0.61.0 AS trivy
 
 ############################
 # CSO Build Image Base #
 ############################
-FROM docker.io/library/golang:1.23.0-bullseye
+FROM docker.io/library/golang:1.23.5-bullseye
 
 # update: datasource=github-tags depName=adrienverge/yamllint versioning=semver
-ENV YAMLLINT_VERSION="v1.35.1"
+ENV YAMLLINT_VERSION="v1.37.0"
 # update: datasource=github-tags depName=opt-nc/yamlfixer versioning=semver
 ENV YAMLFIXER_VERSION="0.9.15"
 

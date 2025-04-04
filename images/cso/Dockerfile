@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.15.1 as helm
+FROM --platform=${BUILDPLATFORM} docker.io/alpine/helm:3.17.2 as helm
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.0-bullseye as build
+FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.23.5-bullseye as build
 ARG TARGETOS TARGETARCH
 
 COPY . /src/cluster-stack-operator
@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache --mount=type=cache,target=/go/pkg \
     go build -mod=vendor -ldflags "${LDFLAGS} -extldflags '-static'" \
     -o manager cmd/main.go
 
-FROM --platform=${BUILDPLATFORM} docker.io/library/alpine:3.20.0
+FROM --platform=${BUILDPLATFORM} docker.io/library/alpine:3.21.3
 WORKDIR /
 COPY --from=build /src/cluster-stack-operator/manager .
 COPY --from=helm --chown=root:root --chmod=755 /usr/bin/helm /usr/local/bin/helm
