@@ -1,0 +1,53 @@
+clusterStackVariables:
+  gitAccessToken: ""
+  gitOrgName: "SovereignCloudStack"
+  gitProvider: "github"
+  gitRepoName: "cluster-stacks"
+  ociAccessToken: ""
+  ociPassword: ""
+  ociRegistry: "registry.scs.community"
+  ociRepository: "registry.scs.community/kaas/cluster-stacks"
+  ociUsername: ""
+controllerManager:
+  manager:
+    source: oci
+    args:
+      - --leader-elect=true
+      - --log-level=info
+    image:
+      repository: ghcr.io/sovereigncloudstack/cso
+      tag: v0.1.0-alpha.8
+    imagePullPolicy: Always
+    resources:
+      limits:
+        cpu: 250m
+        memory: 250Mi
+      requests:
+        cpu: 200m
+        memory: 250Mi
+  replicas: 1
+  serviceAccount:
+    annotations: {}
+  rbac:
+    additionalRules: []
+    # Example:
+    # additionalRules:
+    #   - apiGroups:
+    #       - "custom.api.group"
+    #     resources:
+    #       - "customresources"
+    #     verbs:
+    #       - "get"
+    #       - "list"
+    #       - "watch"
+hookServerSvc:
+  ports:
+    - port: 443
+      targetPort: 9442
+  type: ClusterIP
+kubernetesClusterDomain: cluster.local
+webhookService:
+  ports:
+    - port: 443
+      targetPort: 9443
+  type: ClusterIP

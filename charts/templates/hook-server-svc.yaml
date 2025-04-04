@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cso.fullname" . }}-hook-server-svc
+  labels:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+  {{- include "cso.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.hookServerSvc.type }}
+  selector:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+    control-plane: cso-controller-manager
+  {{- include "cso.selectorLabels" . | nindent 4 }}
+  ports:
+	{{- .Values.hookServerSvc.ports | toYaml | nindent 2 }}
