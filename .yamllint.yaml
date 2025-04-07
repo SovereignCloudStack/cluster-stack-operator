@@ -32,3 +32,4 @@ ignore:
   - .release/**
   - .cluster.yaml
   - .clusterstack.yaml
+  - charts/**
