@@ -159,6 +159,11 @@ func ensureMetadata(downloadPath, metadataFileName string) (Metadata, error) {
 func (r *Release) CheckHelmCharts() error {
 	// check if the cluster class chart is present.
 	clusterClassChartName := r.clusterClassChartName()
+
+	if _, err := r.ClusterClassChartPath(); err != nil {
+		return fmt.Errorf("failed to validate cluster stack: %w", err)
+	}
+
 	clusterClassChartPath, err := r.helmChartNamePath(clusterClassChartName)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster class chart path: %w", err)
@@ -238,11 +243,11 @@ func (r *Release) clusterClassChartName() string {
 }
 
 // ClusterClassChartPath returns the absolute helm chart path for cluster class.
-func (r *Release) ClusterClassChartPath() string {
+func (r *Release) ClusterClassChartPath() (string, error) {
 	nameFilter := r.clusterClassChartName()
-	// we ignore the error here, since we already checked for the presence of the chart.
-	path, _ := r.helmChartNamePath(nameFilter)
-	return path
+
+	path, err := r.helmChartNamePath(nameFilter)
+	return path, err
 }
 
 // helmChartNamePath returns the helm chart name from the given path.
