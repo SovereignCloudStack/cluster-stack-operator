@@ -151,6 +151,20 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		return reconcile.Result{Requeue: true}, nil
 	}
 
+	// Check for helm charts in the release assets. If they are not present, then something went wrong.
+	if err := releaseAssets.CheckHelmCharts(); err != nil {
+		msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
+		conditions.MarkFalse(
+			clusterStackRelease,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError,
+			"%s", msg,
+		)
+		record.Warn(clusterStackRelease, "ValidateHelmChartFailed", msg)
+		return reconcile.Result{}, nil
+	}
+
 	conditions.MarkTrue(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
 
 	kubeClient := r.KubeClientFactory.NewClient(req.Namespace, r.RESTConfig)
@@ -304,7 +318,10 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 
 // templateClusterClassHelmChart templates the clusterClass helm chart.
 func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
-	clusterClassChart := releaseAssets.ClusterClassChartPath()
+	clusterClassChart, e := releaseAssets.ClusterClassChartPath()
+	if e != nil {
+		return nil, fmt.Errorf("failed to template clusterClass helm chart: %w", e)
+	}
 
 	splittedName := strings.Split(name, clusterstack.Separator)
 	releaseName := strings.Join(splittedName[0:4], clusterstack.Separator)
