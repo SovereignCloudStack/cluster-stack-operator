@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cso.fullname" . }}-cluster-stack-variables
+  labels:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+  {{- include "cso.labels" . | nindent 4 }}
+data:
+  {{- if eq .Values.controllerManager.manager.source "github" }}
+  git-access-token: {{ required "clusterStackVariables.gitAccessToken is required"
+    .Values.clusterStackVariables.gitAccessToken | b64enc | quote }}
+  git-org-name: {{ required "clusterStackVariables.gitOrgName is required" .Values.clusterStackVariables.gitOrgName
+    | b64enc | quote }}
+  git-provider: {{ required "clusterStackVariables.gitProvider is required" .Values.clusterStackVariables.gitProvider
+    | b64enc | quote }}
+  git-repo-name: {{ required "clusterStackVariables.gitRepoName is required" .Values.clusterStackVariables.gitRepoName
+    | b64enc | quote }}
+  {{- else}}
+  oci-registry: {{ required "clusterStackVariables.ociRegistry is required" .Values.clusterStackVariables.ociRegistry
+    | b64enc | quote }}
+  oci-repository: {{ required "clusterStackVariables.ociRepository is required" .Values.clusterStackVariables.ociRepository
+    | b64enc | quote }}
+  oci-username: {{ .Values.clusterStackVariables.ociUsername | b64enc | quote }}
+  oci-access-token: {{ .Values.clusterStackVariables.ociAccessToken | b64enc | quote }}
+  oci-password: {{ .Values.clusterStackVariables.ociPassword | b64enc | quote }}
+  {{- end }}
+type: Opaque

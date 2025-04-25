@@ -1,0 +1,131 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "cso.fullname" . }}-manager-role
+  labels:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+  {{- include "cso.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - bootstrap.cluster.x-k8s.io
+  - cluster.x-k8s.io
+  - controlplane.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io
+  - infrastructure.clusterstack.x-k8s.io
+  resources:
+  - '*'
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  verbs:
+  - get
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusteraddons
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusteraddons/finalizers
+  - clusterstackreleases/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusteraddons/status
+  - clusterstackreleases/status
+  - clusterstacks/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusterstackreleases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusterstacks
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - clusterstack.x-k8s.io
+  resources:
+  - clusterstacks/finalizers
+  verbs:
+  - delete
+  - update
+{{- range .Values.controllerManager.rbac.additionalRules }}
+- apiGroups:
+    {{ toYaml .apiGroups | nindent 2 }}
+  resources:
+    {{ toYaml .resources | nindent 2 }}
+  verbs:
+    {{ toYaml .verbs | nindent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "cso.fullname" . }}-manager-rolebinding
+  labels:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+  {{- include "cso.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: '{{ include "cso.fullname" . }}-manager-role'
+subjects:
+- kind: ServiceAccount
+  name: '{{ include "cso.fullname" . }}-controller-manager'
+  namespace: '{{ .Release.Namespace }}'

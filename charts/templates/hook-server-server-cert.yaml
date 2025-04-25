@@ -1,0 +1,18 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "cso.fullname" . }}-hook-server-server-cert
+  labels:
+  {{- include "cso.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+  - '{{ include "cso.fullname" . }}-hook-server-svc.{{ .Release.Namespace }}.svc'
+  - '{{ include "cso.fullname" . }}-hook-server-svc.{{ .Release.Namespace }}.svc.{{
+    .Values.kubernetesClusterDomain }}'
+  issuerRef:
+    kind: Issuer
+    name: '{{ include "cso.fullname" . }}-selfsigned-issuer'
+  secretName: cso-hook-server-server-cert
+  subject:
+    organizations:
+    - k8s-sig-cluster-lifecycle

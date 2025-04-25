@@ -1,0 +1,93 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "cso.fullname" . }}-validating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "cso.fullname" . }}-serving-cert
+  labels:
+  {{- include "cso.labels" . | nindent 4 }}
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: '{{ include "cso.fullname" . }}-webhook-service'
+      namespace: '{{ .Release.Namespace }}'
+      path: /validate-cluster-x-k8s-io-v1beta1-cluster
+  failurePolicy: Fail
+  name: validation.cluster.cluster.x-k8s.io
+  rules:
+  - apiGroups:
+    - cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1alpha1
+  clientConfig:
+    service:
+      name: '{{ include "cso.fullname" . }}-webhook-service'
+      namespace: '{{ .Release.Namespace }}'
+      path: /validate-clusterstack-x-k8s-io-v1alpha1-clusteraddon
+  failurePolicy: Fail
+  name: validation.clusteraddon.clusterstack.x-k8s.io
+  rules:
+  - apiGroups:
+    - clusterstack.x-k8s.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusteraddons
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1alpha1
+  clientConfig:
+    service:
+      name: '{{ include "cso.fullname" . }}-webhook-service'
+      namespace: '{{ .Release.Namespace }}'
+      path: /validate-clusterstack-x-k8s-io-v1alpha1-clusterstack
+  failurePolicy: Fail
+  name: validation.clusterstack.clusterstack.x-k8s.io
+  rules:
+  - apiGroups:
+    - clusterstack.x-k8s.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - clusterstacks
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1alpha1
+  clientConfig:
+    service:
+      name: '{{ include "cso.fullname" . }}-webhook-service'
+      namespace: '{{ .Release.Namespace }}'
+      path: /validate-clusterstack-x-k8s-io-v1alpha1-clusterstackrelease
+  failurePolicy: Fail
+  name: validation.clusterstackrelease.clusterstack.x-k8s.io
+  rules:
+  - apiGroups:
+    - clusterstack.x-k8s.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - DELETE
+    resources:
+    - clusterstackreleases
+  sideEffects: None

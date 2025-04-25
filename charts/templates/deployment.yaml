@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cso.fullname" . }}-controller-manager
+  labels:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+    control-plane: cso-controller-manager
+  {{- include "cso.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controllerManager.replicas }}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/provider: cluster-stack-operator
+      control-plane: cso-controller-manager
+    {{- include "cso.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/provider: cluster-stack-operator
+        control-plane: cso-controller-manager
+      {{- include "cso.selectorLabels" . | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+    spec:
+      containers:
+      - args: {{- toYaml .Values.controllerManager.manager.args | nindent 8 }}
+        command:
+        - /manager
+        - -source
+        - {{ .Values.controllerManager.manager.source }}
+        env:
+        {{- if eq .Values.controllerManager.manager.source "github" }}
+        - name: GIT_PROVIDER
+          valueFrom:
+            secretKeyRef:
+              key: git-provider
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: GIT_ORG_NAME
+          valueFrom:
+            secretKeyRef:
+              key: git-org-name
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: GIT_REPOSITORY_NAME
+          valueFrom:
+            secretKeyRef:
+              key: git-repo-name
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: GIT_ACCESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: git-access-token
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        {{- else }}
+        - name: OCI_REGISTRY
+          valueFrom:
+            secretKeyRef:
+              key: oci-registry
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: OCI_REPOSITORY
+          valueFrom:
+            secretKeyRef:
+              key: oci-repository
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: OCI_ACCESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: oci-access-token
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: OCI_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: oci-username
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        - name: OCI_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: oci-password
+              name: {{ include "cso.fullname" . }}-cluster-stack-variables
+        {{- end }}
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.controllerManager.manager.imagePullPolicy }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: healthz
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: manager
+        ports:
+        - containerPort: 9442
+          name: hook-server-svc
+          protocol: TCP
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        - containerPort: 9440
+          name: healthz
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: healthz
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources: {{- toYaml .Values.controllerManager.manager.resources | nindent 10
+          }}
+        volumeMounts:
+        - mountPath: /tmp/k8s-hook-server/serving-certs
+          name: hook-server-cert
+          readOnly: true
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      serviceAccountName: {{ include "cso.fullname" . }}-controller-manager
+      terminationGracePeriodSeconds: 10
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+      volumes:
+      - name: hook-server-cert
+        secret:
+          defaultMode: 420
+          secretName: cso-hook-server-server-cert
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: cso-webhook-server-cert

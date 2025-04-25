@@ -1,0 +1,16 @@
+apiVersion: runtime.cluster.x-k8s.io/v1alpha1
+kind: ExtensionConfig
+metadata:
+  name: {{ include "cso.fullname" . }}-hook-server-extensionconfig
+  labels:
+    cluster.x-k8s.io/provider: cluster-stack-operator
+  {{- include "cso.labels" . | nindent 4 }}
+  annotations:
+    runtime.cluster.x-k8s.io/inject-ca-from-secret: cso-system/cso-hook-server-server-cert
+spec:
+  clientConfig:
+    service:
+      name: {{ include "cso.fullname" . }}-hook-server-svc
+      namespace: cso-system
+      port: 443
+  namespaceSelector: {}
