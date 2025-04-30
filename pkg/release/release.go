@@ -159,6 +159,7 @@ func ensureMetadata(downloadPath, metadataFileName string) (Metadata, error) {
 func (r *Release) CheckHelmCharts() error {
 	// check if the cluster class chart is present.
 	clusterClassChartName := r.clusterClassChartName()
+
 	clusterClassChartPath, err := r.helmChartNamePath(clusterClassChartName)
 	if err != nil {
 		return fmt.Errorf("failed to get cluster class chart path: %w", err)
@@ -171,12 +172,6 @@ func (r *Release) CheckHelmCharts() error {
 	if _, err := os.Stat(clusterAddonPath); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("failed to verify the clusteraddon.yaml path %s with error: %w", clusterAddonPath, err)
-		}
-
-		// check if the cluster addon values file is present.
-		valuesPath := filepath.Join(r.LocalDownloadPath, ClusterAddonValuesName)
-		if _, err := os.Stat(valuesPath); err != nil {
-			return fmt.Errorf("failed to verify the cluster addon values path %s with error: %w", valuesPath, err)
 		}
 	}
 
@@ -238,11 +233,11 @@ func (r *Release) clusterClassChartName() string {
 }
 
 // ClusterClassChartPath returns the absolute helm chart path for cluster class.
-func (r *Release) ClusterClassChartPath() string {
+func (r *Release) ClusterClassChartPath() (string, error) {
 	nameFilter := r.clusterClassChartName()
-	// we ignore the error here, since we already checked for the presence of the chart.
-	path, _ := r.helmChartNamePath(nameFilter)
-	return path
+
+	path, err := r.helmChartNamePath(nameFilter)
+	return path, err
 }
 
 // helmChartNamePath returns the helm chart name from the given path.
