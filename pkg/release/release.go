@@ -18,6 +18,7 @@ limitations under the License.
 package release
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,11 +39,11 @@ type Release struct {
 
 var (
 	// ErrEmptyReleaseName indicates release name is not provided.
-	ErrEmptyReleaseName = fmt.Errorf("name is empty")
+	ErrEmptyReleaseName = errors.New("name is empty")
 	// ErrEmptyReleaseCSR indicates cluster stack is not provided.
-	ErrEmptyReleaseCSR = fmt.Errorf("cluster stack is empty")
+	ErrEmptyReleaseCSR = errors.New("cluster stack is empty")
 	// ErrEmptyReleaseDownloadPath indicates download path is not provided.
-	ErrEmptyReleaseDownloadPath = fmt.Errorf("local download path is empty")
+	ErrEmptyReleaseDownloadPath = errors.New("local download path is empty")
 )
 
 const (
