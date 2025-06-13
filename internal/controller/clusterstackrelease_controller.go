@@ -19,6 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -264,7 +265,7 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 		return false, fmt.Errorf("failed to create patch helper for ProviderClusterStackRelease: %w", err)
 	}
 
-	if err := controllerutil.SetControllerReference(clusterStackRelease, providerClusterStackRelease, r.Client.Scheme()); err != nil {
+	if err := controllerutil.SetControllerReference(clusterStackRelease, providerClusterStackRelease, r.Scheme()); err != nil {
 		return false, fmt.Errorf("failed to set owner reference to ProviderClusterStackRelease: %w", err)
 	}
 
@@ -273,7 +274,7 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 	}
 
 	// ensure we add a watch to the external object, if there isn't one already
-	eventHandler := handler.EnqueueRequestForOwner(r.Client.Scheme(), r.Client.RESTMapper(), &csov1alpha1.ClusterStackRelease{})
+	eventHandler := handler.EnqueueRequestForOwner(r.Scheme(), r.RESTMapper(), &csov1alpha1.ClusterStackRelease{})
 	if err := r.externalTracker.Watch(log.FromContext(ctx), providerClusterStackRelease, eventHandler); err != nil {
 		return false, fmt.Errorf("failed to add external watch to ProviderClusterStackRelease: %w", err)
 	}
@@ -302,7 +303,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 	}
 
 	if template == nil {
-		return false, fmt.Errorf("template is empty")
+		return false, errors.New("template is empty")
 	}
 
 	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources)

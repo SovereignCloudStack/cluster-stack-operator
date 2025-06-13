@@ -17,11 +17,12 @@ limitations under the License.
 package release
 
 import (
+	"errors"
 	"fmt"
 )
 
 // ErrEmptyVersion indicates that the version is empty.
-var ErrEmptyVersion = fmt.Errorf("empty version")
+var ErrEmptyVersion = errors.New("empty version")
 
 // Metadata is the metadata for cluster stacks.
 type Metadata struct {

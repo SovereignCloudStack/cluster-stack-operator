@@ -161,8 +161,8 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 	// usually this is only nil in unit tests
 	if restConfig != nil {
-		restConfig.QPS = r.RestConfigSettings.QPS
-		restConfig.Burst = r.RestConfigSettings.Burst
+		restConfig.QPS = r.QPS
+		restConfig.Burst = r.Burst
 
 		clientSet, err := kubernetes.NewForConfig(restConfig)
 		if err != nil {
@@ -860,52 +860,51 @@ check:
 
 			in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
 			goto check
-		} else {
-			// Delete part
-			logger.V(1).Info("starting to template helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-			helmTemplate, err := helmTemplateNewClusterStack(in, stage.Name)
-			if err != nil {
-				conditions.MarkFalse(
-					in.clusterAddon,
-					csov1alpha1.HelmChartTemplatedCondition,
-					csov1alpha1.TemplateNewClusterStackFailedReason,
-					clusterv1.ConditionSeverityError,
-					"failed to template new helm chart: %s", err.Error(),
-				)
-
-				return false, nil
-			}
-			logger.V(1).Info("finished templating helm chart and starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-
-			deletedResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, helmTemplate)
-			if err != nil {
-				conditions.MarkFalse(
-					in.clusterAddon,
-					csov1alpha1.HelmChartDeletedCondition,
-					csov1alpha1.FailedToDeleteObjectsReason,
-					clusterv1.ConditionSeverityInfo,
-					"failed to successfully delete helm chart: %q", stage.Name,
-				)
-
-				return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
-			}
-			if shouldRequeue {
-				return true, nil
-			}
-
-			// This is for the current stage objects and will be removed once done.
-			in.clusterAddon.Status.Resources = deletedResources
-			logger.V(1).Info("finished deleting helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-
-			// remove status resource if deleted successfully
-			in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
-
-			// delete the false condition with failed to apply reason
-			conditions.Delete(in.clusterAddon, csov1alpha1.HelmChartDeletedCondition)
-
-			in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
-			goto check
 		}
+		// Delete part
+		logger.V(1).Info("starting to template helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+		helmTemplate, err := helmTemplateNewClusterStack(in, stage.Name)
+		if err != nil {
+			conditions.MarkFalse(
+				in.clusterAddon,
+				csov1alpha1.HelmChartTemplatedCondition,
+				csov1alpha1.TemplateNewClusterStackFailedReason,
+				clusterv1.ConditionSeverityError,
+				"failed to template new helm chart: %s", err.Error(),
+			)
+
+			return false, nil
+		}
+		logger.V(1).Info("finished templating helm chart and starting to delete helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+
+		deletedResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, helmTemplate)
+		if err != nil {
+			conditions.MarkFalse(
+				in.clusterAddon,
+				csov1alpha1.HelmChartDeletedCondition,
+				csov1alpha1.FailedToDeleteObjectsReason,
+				clusterv1.ConditionSeverityInfo,
+				"failed to successfully delete helm chart: %q", stage.Name,
+			)
+
+			return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
+		}
+		if shouldRequeue {
+			return true, nil
+		}
+
+		// This is for the current stage objects and will be removed once done.
+		in.clusterAddon.Status.Resources = deletedResources
+		logger.V(1).Info("finished deleting helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
+
+		// remove status resource if deleted successfully
+		in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+
+		// delete the false condition with failed to apply reason
+		conditions.Delete(in.clusterAddon, csov1alpha1.HelmChartDeletedCondition)
+
+		in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPostCondition)
+		goto check
 
 	case csov1alpha1.StagePhaseWaitingForPostCondition:
 		// If WaitForPostCondition is mentioned.
