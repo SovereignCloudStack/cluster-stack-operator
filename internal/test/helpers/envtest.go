@@ -262,7 +262,7 @@ func NewTestEnvironment() *TestEnvironment {
 func (t *TestEnvironment) StartManager(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	t.cancel = cancel
-	if err := t.Manager.Start(ctx); err != nil {
+	if err := t.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start manager: %w", err)
 	}
 	return nil
@@ -292,7 +292,7 @@ func (t *TestEnvironment) Stop() error {
 func (t *TestEnvironment) Cleanup(ctx context.Context, objs ...client.Object) error {
 	errs := make([]error, 0, len(objs))
 	for _, o := range objs {
-		err := t.Client.Delete(ctx, o)
+		err := t.Delete(ctx, o)
 		if apierrors.IsNotFound(err) {
 			// If the object is not found, it must've been garbage collected
 			// already. For example, if we delete namespace first and then
@@ -314,7 +314,7 @@ func (t *TestEnvironment) CreateNamespace(ctx context.Context, generateName stri
 			},
 		},
 	}
-	if err := t.Client.Create(ctx, ns); err != nil {
+	if err := t.Create(ctx, ns); err != nil {
 		return nil, fmt.Errorf("failed to create namespace: %w", err)
 	}
 

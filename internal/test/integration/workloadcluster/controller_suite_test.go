@@ -88,7 +88,7 @@ var _ = BeforeSuite(func() {
 		Expect(testEnv.StartManager(ctx)).To(Succeed())
 	}()
 
-	<-testEnv.Manager.Elected()
+	<-testEnv.Elected()
 })
 
 var _ = AfterSuite(func() {

@@ -17,14 +17,14 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"fmt"
+	"errors"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // ErrNilInput indicates a nil input.
-var ErrNilInput = fmt.Errorf("nil input")
+var ErrNilInput = errors.New("nil input")
 
 // Resource defines the status of a resource.
 type Resource struct {

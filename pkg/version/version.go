@@ -18,6 +18,7 @@ limitations under the License.
 package version
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -149,7 +150,7 @@ func FromReleaseTag(releaseTag string) (Version, error) {
 // Validate validates the version.
 func (csv *Version) Validate() error {
 	if csv.Major < 0 {
-		return fmt.Errorf("major version should be a non-negative integer")
+		return errors.New("major version should be a non-negative integer")
 	}
 
 	if csv.Channel != ChannelStable {
@@ -158,13 +159,13 @@ func (csv *Version) Validate() error {
 			// If it's an integer, check if it's greater than 0
 			patchInt, _ := strconv.Atoi(csv.Patch)
 			if patchInt < 0 {
-				return fmt.Errorf("patch version should be a non-negative integer")
+				return errors.New("patch version should be a non-negative integer")
 			}
 		}
 
 		// If it's alpha numeric, check if it's empty
 		if csv.Patch == "" {
-			return fmt.Errorf("patch can't empty")
+			return errors.New("patch can't empty")
 		}
 	}
 
