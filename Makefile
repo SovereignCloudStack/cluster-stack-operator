@@ -451,7 +451,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --out-format=colored-line-number
+	GO111MODULE=on golangci-lint run -v --output.text.colors=true
 endif
 
 .PHONY: lint-yaml
