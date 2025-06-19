@@ -1,5 +1,10 @@
+version: "2"
+run:
+  go: "1.22"
+  modules-download-mode: vendor
+  allow-parallel-runners: true
 linters:
-  disable-all: true
+  default: none
   enable:
     - asasalint
     - asciicheck
@@ -7,23 +12,18 @@ linters:
     - bodyclose
     - containedctx
     - contextcheck
+    - copyloopvar
     - durationcheck
     - errchkjson
     - errname
     - errorlint
     - exhaustive
-    - copyloopvar
     - forcetypeassert
-    - gci
     - goconst
     - gocritic
     - godot
-    - gofmt
-    - gofumpt
-    - goimports
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
     - importas
     - ineffassign
@@ -41,246 +41,211 @@ linters:
     - revive
     - rowserrcheck
     - staticcheck
-    - stylecheck
     - tagliatelle
     - thelper
     - tparallel
-    - typecheck
     - unconvert
-    - usestdlibvars
     - unused
+    - usestdlibvars
     - wastedassign
     - wrapcheck
-
-linters-settings:
-  godot:
-    #   declarations - for top level declaration comments (default);
-    #   toplevel     - for top level comments;
-    #   all          - for all comments.
-    scope: toplevel
-    exclude:
-      - '^ \+.*'
-      - "^ ANCHOR.*"
-  importas:
-    no-unaliased: true
-    alias:
-      # Kubernetes
-      - pkg: k8s.io/api/core/v1
-        alias: corev1
-      - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
-        alias: apiextensionsv1
-      - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
-        alias: metav1
-      - pkg: k8s.io/apimachinery/pkg/api/errors
-        alias: apierrors
-      - pkg: k8s.io/apimachinery/pkg/util/errors
-        alias: kerrors
-      - pkg: k8s.io/component-base/logs/api/v1
-        alias: logsv1
-      # Controller Runtime
-      - pkg: sigs.k8s.io/controller-runtime
-        alias: ctrl
-  gofumpt:
-    extra-rules: true
-  nolintlint:
-    allow-unused: false
-    allow-leading-space: false
-    require-specific: true
-  stylecheck:
-    checks: ["all", "-ST1006"]
-    dot-import-whitelist:
-      - "github.com/onsi/gomega"
-      - "github.com/onsi/ginkgo/v2"
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-      - experimental
-      - opinionated
-    settings:
-      hugeParam:
-        sizeThreshold: 120
-  revive:
-    enable-all-rules: true
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - experimental
+        - opinionated
+      settings:
+        hugeParam:
+          sizeThreshold: 120
+    godot:
+      scope: toplevel
+      exclude:
+        - ^ \+.*
+        - ^ ANCHOR.*
+    importas:
+      alias:
+        - pkg: k8s.io/api/core/v1
+          alias: corev1
+        - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
+          alias: apiextensionsv1
+        - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+          alias: metav1
+        - pkg: k8s.io/apimachinery/pkg/api/errors
+          alias: apierrors
+        - pkg: k8s.io/apimachinery/pkg/util/errors
+          alias: kerrors
+        - pkg: k8s.io/component-base/logs/api/v1
+          alias: logsv1
+        - pkg: sigs.k8s.io/controller-runtime
+          alias: ctrl
+      no-unaliased: true
+    nolintlint:
+      require-specific: true
+      allow-unused: false
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: import-alias-naming
+          disabled: true
+        - name: redundant-import-alias
+          disabled: true
+        - name: dot-imports
+          disabled: true
+        - name: add-constant
+          arguments:
+            - allowInts: 0,1,2,3,42,100
+              allowStrs: '""'
+              maxLitCount: "3"
+          severity: warning
+          disabled: true
+        - name: argument-limit
+          arguments:
+            - 3
+          severity: warning
+          disabled: true
+        - name: banned-characters
+          disabled: true
+        - name: cognitive-complexity
+          severity: warning
+          disabled: true
+        - name: cyclomatic
+          arguments:
+            - 10
+          severity: warning
+          disabled: true
+        - name: defer
+          arguments:
+            - - call-chain
+              - loop
+              - method-call
+              - recover
+              - immediate-recover
+              - return
+          severity: warning
+          disabled: false
+        - name: exported
+          severity: warning
+          disabled: false
+        - name: file-header
+          disabled: true
+        - name: flag-parameter
+          disabled: true
+        - name: function-result-limit
+          arguments:
+            - 3
+          severity: warning
+          disabled: false
+        - name: function-length
+          arguments:
+            - 15
+            - 0
+          severity: warning
+          disabled: true
+        - name: line-length-limit
+          arguments:
+            - 120
+          severity: warning
+          disabled: true
+        - name: max-public-structs
+          arguments:
+            - 3
+          severity: warning
+          disabled: true
+        - name: string-format
+          arguments:
+            - - core.WriteError[1].Message
+              - /^([^A-Z]|$)/
+              - must not start with a capital letter
+            - - fmt.Errorf[0]
+              - /(^|[^\.!?])$/
+              - must not end in punctuation
+            - - panic
+              - /^[^\n]*$/
+              - must not contain line breaks
+          severity: warning
+          disabled: false
+        - name: unhandled-error
+          arguments:
+            - fmt.Printf
+            - fmt.Println
+          severity: warning
+          disabled: false
+        - name: var-naming
+          arguments:
+            - - ID
+            - - VM
+          severity: warning
+          disabled: false
+        - name: comment-spacings
+          disabled: true
+        - name: use-any
+          disabled: true
+        - name: deep-exit
+          disabled: true
+        - name: nested-structs
+          disabled: true
+        - name: struct-tag
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+        - -ST1006
+      dot-import-whitelist:
+        - github.com/onsi/gomega
+        - github.com/onsi/ginkgo/v2
+    usestdlibvars:
+      http-method: true
+      http-status-code: true
+      time-weekday: true
+      time-month: true
+      time-layout: true
+      crypto-hash: true
+      default-rpc-path: true
+      sql-isolation-level: true
+      tls-signature-scheme: true
+      constant-kind: true
+    wrapcheck:
+      ignore-sigs:
+        - status.Error(
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+        - .Complete(
+  exclusions:
+    generated: lax
     rules:
-      - name: import-alias-naming
-        disabled: true
-      - name: redundant-import-alias
-        disabled: true
-      - name: dot-imports
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#add-constant
-      - name: add-constant
-        severity: warning
-        disabled: true
-        arguments:
-          - maxLitCount: "3"
-            allowStrs: '""'
-            allowInts: "0,1,2,3,42,100"
-
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#argument-limit
-      - name: argument-limit
-        severity: warning
-        disabled: true
-        arguments: [3]
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#banned-characters
-      - name: banned-characters
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#cognitive-complexity
-      - name: cognitive-complexity
-        severity: warning
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#cyclomatic
-      - name: cyclomatic
-        severity: warning
-        disabled: true
-        arguments: [10]
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#defer
-      - name: defer
-        severity: warning
-        disabled: false
-        arguments:
-          - [ "call-chain", "loop", "method-call", "recover", "immediate-recover", "return"] # yamllint disable-line rule:line-length
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#exported
-      - name: exported
-        severity: warning
-        disabled: false
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#file-header
-      - name: file-header
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#flag-parameter
-      - name: flag-parameter
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#function-result-limit
-      - name: function-result-limit
-        severity: warning
-        disabled: false
-        arguments: [3]
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#function-length
-      - name: function-length
-        severity: warning
-        disabled: true
-        arguments: [15, 0]
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#imports-blacklist
-      - name: imports-blacklist
-        severity: warning
-        disabled: false
-        arguments:
-          - "crypto/md5"
-          - "crypto/sha1"
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#line-length-limit
-      - name: line-length-limit
-        severity: warning
-        disabled: true
-        arguments: [120]
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#max-public-structs
-      - name: max-public-structs
-        severity: warning
-        disabled: true
-        arguments: [3]
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#string-format
-      - name: string-format
-        severity: warning
-        disabled: false
-        arguments:
-          - - "core.WriteError[1].Message"
-            - "/^([^A-Z]|$)/"
-            - must not start with a capital letter
-          - - "fmt.Errorf[0]"
-            - '/(^|[^\.!?])$/'
-            - must not end in punctuation
-          - - panic
-            - '/^[^\n]*$/'
-            - must not contain line breaks
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#unhandled-error
-      - name: unhandled-error
-        severity: warning
-        disabled: false
-        arguments:
-          - "fmt.Printf"
-          - "fmt.Println" # allow these ones
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#var-naming
-      - name: var-naming
-        severity: warning
-        disabled: false
-        arguments:
-          - ["ID"] # AllowList
-          - ["VM"] # DenyList
-      # revive changed configuration
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#comment-spacings
-      - name: comment-spacings
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#use-any
-      - name: use-any
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#deep-exit
-      - name: deep-exit
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#receiver-naming
-      - name: nested-structs
-        disabled: true
-      # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#struct-tag
-      - name: struct-tag
-        disabled: true
-  usestdlibvars:
-    # Suggest the use of http.MethodXX.
-    # Default: true
-    http-method: true
-    # Suggest the use of http.StatusXX.
-    # Default: true
-    http-status-code: true
-    # Suggest the use of time.Weekday.String().
-    # Default: true
-    time-weekday: true
-    # Suggest the use of time.Month.String().
-    # Default: false
-    time-month: true
-    # Suggest the use of time.Layout.
-    # Default: false
-    time-layout: true
-    # Suggest the use of crypto.Hash.String().
-    # Default: false
-    crypto-hash: true
-    # Suggest the use of rpc.DefaultXXPath.
-    # Default: false
-    default-rpc-path: true
-    # Suggest the use of sql.LevelXX.String().
-    # Default: false
-    sql-isolation-level: true
-    # Suggest the use of tls.SignatureScheme.String().
-    # Default: false
-    tls-signature-scheme: true
-    # Suggest the use of constant.Kind.String().
-    # Default: false
-    constant-kind: true
-  wrapcheck:
-    ignoreSigs:
-      - status.Error(
-      - .Errorf(
-      - errors.New(
-      - errors.Unwrap(
-      - .Wrap(
-      - .Wrapf(
-      - .WithMessage(
-      - .WithMessagef(
-      - .WithStack(
-      - .Complete(
+      - linters:
+          - wrapcheck
+        path: _test\.go
+    paths:
+      - vendor$
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  max-same-issues: 0
   max-issues-per-linter: 0
-  # We are disabling default golangci exclusions
-  # because we want to help reviewers to focus on reviewing the most relevant
-  # changes in PRs and avoid nitpicking.
-  exclude-use-default: false
-  exclude-rules:
-    - linters:
-        - wrapcheck
-      path: _test\.go
-  exclude-dirs:
-    - vendor$
-run:
-  timeout: 10m
-  go: "1.22"
-  allow-parallel-runners: true
-  modules-download-mode: vendor
+  max-same-issues: 0
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - vendor$
+      - third_party$
+      - builtin$
+      - examples$
