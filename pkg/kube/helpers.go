@@ -316,7 +316,7 @@ func getName(obj runtime.Object) (string, error) {
 	case metav1.Object:
 		return t.GetName(), nil
 	default:
-		return "", fmt.Errorf("object does not implement GetName()")
+		return "", errors.New("object does not implement GetName()")
 	}
 }
 
