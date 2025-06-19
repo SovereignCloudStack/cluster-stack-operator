@@ -17,7 +17,7 @@
 # If you make changes to this Dockerfile run `make builder-image-push`.
 
 # Install Lychee
-FROM docker.io/library/alpine:3.21.3 AS lychee
+FROM docker.io/library/alpine:3.22.0 AS lychee
 # update: datasource=github-tags depName=lycheeverse/lychee versioning=semver
 ENV LYCHEE_VERSION="v0.15.1"
 # hadolint ignore=DL3018
@@ -34,7 +34,7 @@ FROM cgr.dev/chainguard/wolfi-base:latest AS wolfi
 # update: datasource=github-tags depName=kubernetes-sigs/cluster-api
 ARG CLUSTERCTL_VERSION="v1.8.1"
 # update: datasource=github-tags depName=helm/helm
-ENV HELM_VERSION="v3.17.2"
+ENV HELM_VERSION="v3.18.3"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
 ARG KIND_VERSION="v0.24.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
@@ -58,9 +58,9 @@ RUN apk add -U --no-cache \
     trivy=~${TRIVY_VERSION#v}
 
 # Install Golang CI Lint
-FROM docker.io/library/alpine:3.21.3 AS golangci
+FROM docker.io/library/alpine:3.22.0 AS golangci
 # update: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-ENV GOLANGCI_VERSION="v2.0.2"
+ENV GOLANGCI_VERSION="v2.1.6"
 WORKDIR /
 # hadolint ignore=DL3018,DL4006
 RUN apk add --no-cache curl && \
@@ -70,7 +70,7 @@ RUN apk add --no-cache curl && \
 FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:3c206a451cec6d486367e758645269fd7d696c5ccb6ff59d8b03b0e45268a199 AS hadolint
 
 # Install Trivy
-FROM docker.io/aquasec/trivy:0.61.0 AS trivy
+FROM docker.io/aquasec/trivy:0.63.0 AS trivy
 
 ############################
 # CSO Build Image Base #
@@ -78,7 +78,7 @@ FROM docker.io/aquasec/trivy:0.61.0 AS trivy
 FROM docker.io/library/golang:1.23.5-bullseye
 
 # update: datasource=github-tags depName=adrienverge/yamllint versioning=semver
-ENV YAMLLINT_VERSION="v1.37.0"
+ENV YAMLLINT_VERSION="v1.37.1"
 # update: datasource=github-tags depName=opt-nc/yamlfixer versioning=semver
 ENV YAMLFIXER_VERSION="0.9.15"
 
