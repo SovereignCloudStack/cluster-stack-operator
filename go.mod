@@ -2,18 +2,18 @@ module github.com/SovereignCloudStack/cluster-stack-operator
 
 go 1.23.0
 
-toolchain go1.23.8
+toolchain go1.24.2
 
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
-	github.com/google/cel-go v0.23.2
+	github.com/google/cel-go v0.24.1
 	github.com/google/go-github/v52 v52.0.0
 	github.com/onsi/ginkgo/v2 v2.23.3
-	github.com/onsi/gomega v1.36.3
+	github.com/onsi/gomega v1.37.0
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/mod v0.23.0
-	golang.org/x/oauth2 v0.25.0
+	golang.org/x/mod v0.24.0
+	golang.org/x/oauth2 v0.28.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/cli-runtime v0.30.3
@@ -22,17 +22,16 @@ require (
 	oras.land/oras-go/v2 v2.5.0
 	sigs.k8s.io/cluster-api v1.8.1
 	sigs.k8s.io/cluster-api/test v1.8.1
-	sigs.k8s.io/controller-runtime v0.18.7
-	sigs.k8s.io/kind v0.25.0
+	sigs.k8s.io/controller-runtime v0.18.6
+	sigs.k8s.io/kind v0.27.0
 )
 
 require (
+	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	cel.dev/expr v0.19.1 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
-	github.com/alessio/shellescape v1.4.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
