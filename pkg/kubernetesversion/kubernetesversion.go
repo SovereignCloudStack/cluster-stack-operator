@@ -18,6 +18,7 @@ limitations under the License.
 package kubernetesversion
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -31,13 +32,13 @@ type KubernetesVersion struct {
 
 var (
 	// ErrInvalidFormat is used for invalid format.
-	ErrInvalidFormat = fmt.Errorf("invalid format")
+	ErrInvalidFormat = errors.New("invalid format")
 
 	// ErrInvalidMajorVersion is used for invalid major version.
-	ErrInvalidMajorVersion = fmt.Errorf("invalid major version")
+	ErrInvalidMajorVersion = errors.New("invalid major version")
 
 	// ErrInvalidMinorVersion is used for invalid minor version.
-	ErrInvalidMinorVersion = fmt.Errorf("invalid minor version")
+	ErrInvalidMinorVersion = errors.New("invalid minor version")
 )
 
 // New returns a kubernetes version from specified major and minor version.

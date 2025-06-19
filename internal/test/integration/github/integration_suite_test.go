@@ -62,7 +62,7 @@ var _ = BeforeSuite(func() {
 		defer GinkgoRecover()
 		Expect(testEnv.StartManager(ctx)).To(Succeed())
 	}()
-	<-testEnv.Manager.Elected()
+	<-testEnv.Elected()
 })
 
 var _ = AfterSuite(func() {
