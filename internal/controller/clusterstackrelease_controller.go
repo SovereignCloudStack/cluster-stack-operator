@@ -19,6 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -151,6 +152,20 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		return reconcile.Result{Requeue: true}, nil
 	}
 
+	// Check for helm charts in the release assets. If they are not present, then something went wrong.
+	if err := releaseAssets.CheckHelmCharts(); err != nil {
+		msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
+		conditions.MarkFalse(
+			clusterStackRelease,
+			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			csov1alpha1.IssueWithReleaseAssetsReason,
+			clusterv1.ConditionSeverityError,
+			"%s", msg,
+		)
+		record.Warn(clusterStackRelease, "ValidateHelmChartFailed", msg)
+		return reconcile.Result{}, nil
+	}
+
 	conditions.MarkTrue(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
 
 	kubeClient := r.KubeClientFactory.NewClient(req.Namespace, r.RESTConfig)
@@ -250,7 +265,7 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 		return false, fmt.Errorf("failed to create patch helper for ProviderClusterStackRelease: %w", err)
 	}
 
-	if err := controllerutil.SetControllerReference(clusterStackRelease, providerClusterStackRelease, r.Client.Scheme()); err != nil {
+	if err := controllerutil.SetControllerReference(clusterStackRelease, providerClusterStackRelease, r.Scheme()); err != nil {
 		return false, fmt.Errorf("failed to set owner reference to ProviderClusterStackRelease: %w", err)
 	}
 
@@ -259,7 +274,7 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 	}
 
 	// ensure we add a watch to the external object, if there isn't one already
-	eventHandler := handler.EnqueueRequestForOwner(r.Client.Scheme(), r.Client.RESTMapper(), &csov1alpha1.ClusterStackRelease{})
+	eventHandler := handler.EnqueueRequestForOwner(r.Scheme(), r.RESTMapper(), &csov1alpha1.ClusterStackRelease{})
 	if err := r.externalTracker.Watch(log.FromContext(ctx), providerClusterStackRelease, eventHandler); err != nil {
 		return false, fmt.Errorf("failed to add external watch to ProviderClusterStackRelease: %w", err)
 	}
@@ -288,7 +303,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 	}
 
 	if template == nil {
-		return false, fmt.Errorf("template is empty")
+		return false, errors.New("template is empty")
 	}
 
 	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources)
@@ -304,7 +319,10 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 
 // templateClusterClassHelmChart templates the clusterClass helm chart.
 func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
-	clusterClassChart := releaseAssets.ClusterClassChartPath()
+	clusterClassChart, e := releaseAssets.ClusterClassChartPath()
+	if e != nil {
+		return nil, fmt.Errorf("failed to template clusterClass helm chart: %w", e)
+	}
 
 	splittedName := strings.Split(name, clusterstack.Separator)
 	releaseName := strings.Join(splittedName[0:4], clusterstack.Separator)
