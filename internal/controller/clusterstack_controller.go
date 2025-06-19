@@ -19,6 +19,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -321,7 +322,7 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 	// update if it exists already and should be updated
 	if existsAlready {
 		if shouldUpdate {
-			if err := r.Client.Update(ctx, to); err != nil {
+			if err := r.Update(ctx, to); err != nil {
 				return nil, fmt.Errorf("failed to update object: %w", err)
 			}
 			record.Eventf(clusterStack, "UpdateProviderStackRelease", "Updated ProviderClusterStackRelease %s", name)
@@ -330,7 +331,7 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 	}
 
 	// object does not exist yet - create it
-	if err := r.Client.Create(ctx, to); err != nil {
+	if err := r.Create(ctx, to); err != nil {
 		return nil, fmt.Errorf("failed to create object: %w", err)
 	}
 
@@ -646,7 +647,7 @@ func unstructuredSpecEqual(oldObj, newObj map[string]interface{}) (newSpec map[s
 		return nil, false, fmt.Errorf("failed to retrieve spec map of object: %w", err)
 	}
 	if !isEqual {
-		return nil, false, fmt.Errorf("missing spec")
+		return nil, false, errors.New("missing spec")
 	}
 
 	newSpec, isEqual, err = unstructured.NestedMap(newObj, "spec")
@@ -654,7 +655,7 @@ func unstructuredSpecEqual(oldObj, newObj map[string]interface{}) (newSpec map[s
 		return nil, false, fmt.Errorf("failed to retrieve spec map of object: %w", err)
 	}
 	if !isEqual {
-		return nil, false, fmt.Errorf("missing spec")
+		return nil, false, errors.New("missing spec")
 	}
 
 	return newSpec, reflect.DeepEqual(oldSpec, newSpec), nil
@@ -726,7 +727,7 @@ func (*ClusterStackReconciler) ClusterStackReleaseToClusterStack(ctx context.Con
 		}
 
 		// check if the controller reference is already set and return an empty result when one is found.
-		for _, ref := range m.ObjectMeta.GetOwnerReferences() {
+		for _, ref := range m.GetOwnerReferences() {
 			result = append(result, reconcile.Request{NamespacedName: types.NamespacedName{Name: ref.Name, Namespace: m.Namespace}})
 		}
 
