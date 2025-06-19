@@ -18,6 +18,7 @@ limitations under the License.
 package clusterstack
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -48,11 +49,11 @@ type ClusterStack struct {
 
 var (
 	// ErrInvalidFormat indicates a cluster stack string has an invalid format.
-	ErrInvalidFormat = fmt.Errorf("invalid format")
+	ErrInvalidFormat = errors.New("invalid format")
 	// ErrInvalidProvider indicates a cluster stack string has an invalid provider.
-	ErrInvalidProvider = fmt.Errorf("invalid provider")
+	ErrInvalidProvider = errors.New("invalid provider")
 	// ErrInvalidName indicates a cluster stack string has an invalid name.
-	ErrInvalidName = fmt.Errorf("invalid name")
+	ErrInvalidName = errors.New("invalid name")
 )
 
 // NewFromClusterClassProperties returns a ClusterStack based on a cluster stack string.
