@@ -60,7 +60,7 @@ RUN apk add -U --no-cache \
 # Install Golang CI Lint
 FROM docker.io/library/alpine:3.22.0 AS golangci
 # update: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-ENV GOLANGCI_VERSION="v2.1.6"
+ENV GOLANGCI_VERSION="v2.2.1"
 WORKDIR /
 # hadolint ignore=DL3018,DL4006
 RUN apk add --no-cache curl && \
@@ -70,7 +70,7 @@ RUN apk add --no-cache curl && \
 FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:3c206a451cec6d486367e758645269fd7d696c5ccb6ff59d8b03b0e45268a199 AS hadolint
 
 # Install Trivy
-FROM docker.io/aquasec/trivy:0.63.0 AS trivy
+FROM docker.io/aquasec/trivy:0.64.0 AS trivy
 
 ############################
 # CSO Build Image Base #
