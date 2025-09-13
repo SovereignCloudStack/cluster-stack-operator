@@ -6,7 +6,7 @@ runs:
     - name: Install go
       uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
       with:
-        go-version: "1.24"
+        go-version: "1.25"
         go-version-file: "go.mod"
         cache: true
         cache-dependency-path: go.sum
@@ -16,14 +16,14 @@ runs:
         echo "::set-output name=go-build::$(go env GOCACHE)"
         echo "::set-output name=go-mod::$(go env GOMODCACHE)"
     - name: Go Mod Cache
-      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4
       with:
         path: ${{ steps.go-cache-paths.outputs.go-mod }}
         key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-mod-
     - name: Go Build Cache
-      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4
       with:
         path: ${{ steps.go-cache-paths.outputs.go-build }}
         key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
