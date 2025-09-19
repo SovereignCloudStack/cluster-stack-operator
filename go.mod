@@ -2,12 +2,12 @@ module github.com/SovereignCloudStack/cluster-stack-operator
 
 go 1.23.0
 
-toolchain go1.24.4
+toolchain go1.24.7
 
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572
-	github.com/google/cel-go v0.25.0
+	github.com/google/cel-go v0.25.1
 	github.com/google/go-github/v52 v52.0.0
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
@@ -28,7 +28,7 @@ require (
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
-	cel.dev/expr v0.23.1 // indirect
+	cel.dev/expr v0.24.0 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
