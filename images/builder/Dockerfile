@@ -17,7 +17,7 @@
 # If you make changes to this Dockerfile run `make builder-image-push`.
 
 # Install Lychee
-FROM docker.io/library/alpine:3.22.0 AS lychee
+FROM docker.io/library/alpine:3.22.1 AS lychee
 # update: datasource=github-tags depName=lycheeverse/lychee versioning=semver
 ENV LYCHEE_VERSION="v0.15.1"
 # hadolint ignore=DL3018
@@ -34,7 +34,7 @@ FROM cgr.dev/chainguard/wolfi-base:latest AS wolfi
 # update: datasource=github-tags depName=kubernetes-sigs/cluster-api
 ARG CLUSTERCTL_VERSION="v1.8.1"
 # update: datasource=github-tags depName=helm/helm
-ENV HELM_VERSION="v3.18.3"
+ENV HELM_VERSION="v3.19.0"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
 ARG KIND_VERSION="v0.24.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
@@ -58,19 +58,19 @@ RUN apk add -U --no-cache \
     trivy=~${TRIVY_VERSION#v}
 
 # Install Golang CI Lint
-FROM docker.io/library/alpine:3.22.0 AS golangci
+FROM docker.io/library/alpine:3.22.1 AS golangci
 # update: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-ENV GOLANGCI_VERSION="v2.2.1"
+ENV GOLANGCI_VERSION="v2.4.0"
 WORKDIR /
 # hadolint ignore=DL3018,DL4006
 RUN apk add --no-cache curl && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s ${GOLANGCI_VERSION}
 
 # Install Hadolint
-FROM docker.io/hadolint/hadolint:v2.12.0-alpine@sha256:3c206a451cec6d486367e758645269fd7d696c5ccb6ff59d8b03b0e45268a199 AS hadolint
+FROM docker.io/hadolint/hadolint:v2.13.1-alpine@sha256:84c2f9088a8cb0ea2bd16b5349186770d16441e77eec1a1d1e0574cf7dff47ac AS hadolint
 
 # Install Trivy
-FROM docker.io/aquasec/trivy:0.64.0 AS trivy
+FROM docker.io/aquasec/trivy:0.66.0 AS trivy
 
 ############################
 # CSO Build Image Base #

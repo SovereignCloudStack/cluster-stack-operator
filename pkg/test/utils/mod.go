@@ -15,7 +15,11 @@ limitations under the License.
 */
 
 // Package utils contains important functions for envtest.
+//
+//revive:disable:var-naming
 package utils
+
+//revive:enable:var-naming
 
 import (
 	"fmt"
