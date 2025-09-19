@@ -117,11 +117,11 @@ func TestMakeDiff(t *testing.T) {
 	expectedToDelete := []*csov1alpha1.ClusterStackRelease{csr1}
 
 	if !reflect.DeepEqual(toString(toCreate), toString(expectedToCreate)) {
-		t.Errorf("toCreate is not as expected")
+		t.Error("toCreate is not as expected")
 	}
 
 	if !reflect.DeepEqual(toString(toDelete), toString(expectedToDelete)) {
-		t.Errorf("toDelete is not as expected")
+		t.Error("toDelete is not as expected")
 	}
 
 	// Test Case 2:
@@ -239,7 +239,7 @@ func TestGetLatestReadyClusterStackRelease(t *testing.T) {
 		}
 		expectedLatest := "docker-ferrol-1-21-v3"
 		if latest == nil {
-			t.Errorf("Expected latest to be non-nil, but got nil")
+			t.Error("Expected latest to be non-nil, but got nil")
 		} else if *latest != expectedLatest {
 			t.Errorf("Expected latest to be %s, but got %s", expectedLatest, *latest)
 		}
