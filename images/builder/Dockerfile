@@ -32,19 +32,19 @@ RUN apk add --no-cache curl && \
 FROM cgr.dev/chainguard/wolfi-base:latest AS wolfi
 
 # update: datasource=github-tags depName=kubernetes-sigs/cluster-api
-ARG CLUSTERCTL_VERSION="v1.8.1"
+ARG CLUSTERCTL_VERSION="v1.10.4"
 # update: datasource=github-tags depName=helm/helm
 ENV HELM_VERSION="v3.19.0"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
-ARG KIND_VERSION="v0.24.0"
+ARG KIND_VERSION="v0.30.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION="v1.30.4"
+ARG KUBECTL_VERSION="v1.34.0"
 # update: datasource=github-tags depName=kubernetes-sigs/kustomize extractVersion=^kustomize\/v(?<version>.+)$
-ARG KUSTOMIZE_VERSION="v5.4.3"
+ARG KUSTOMIZE_VERSION="v5.7.1"
 # update: datasource=github-tags depName=aquasecurity/trivy
-ARG TRIVY_VERSION="v0.54.1"
+ARG TRIVY_VERSION="v0.66.0"
 # update: datasource=github-tags depName=kubernetes-sigs/controller-tools
-ARG CONTROLLER_GEN_VERSION="v0.16.1"
+ARG CONTROLLER_GEN_VERSION="v0.19.0"
 
 # hadolint ignore=DL3018
 RUN apk add -U --no-cache \
@@ -75,7 +75,7 @@ FROM docker.io/aquasec/trivy:0.66.0 AS trivy
 ############################
 # CSO Build Image Base #
 ############################
-FROM docker.io/library/golang:1.23.5-bullseye
+FROM docker.io/library/golang:1.24.6-bullseye
 
 # update: datasource=github-tags depName=adrienverge/yamllint versioning=semver
 ENV YAMLLINT_VERSION="v1.37.1"
