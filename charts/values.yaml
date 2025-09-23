@@ -10,7 +10,9 @@ clusterStackVariables:
   ociUsername: ""
 controllerManager:
   manager:
-    extraEnv: []
+    extraEnv:
+      - name: HELM_CACHE_HOME
+        value: /tmp/downloads/cluster-stacks/.helm/cache
     source: oci
     args:
       - --leader-elect=true
@@ -30,17 +32,19 @@ controllerManager:
   serviceAccount:
     annotations: {}
   rbac:
-    additionalRules: []
-    # Example:
-    # additionalRules:
-    #   - apiGroups:
-    #       - "custom.api.group"
-    #     resources:
-    #       - "customresources"
-    #     verbs:
-    #       - "get"
-    #       - "list"
-    #       - "watch"
+    additionalRules:
+      - apiGroups:
+          - "openstack.k-orc.cloud"
+        resources:
+          - "images"
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
 hookServerSvc:
   ports:
     - port: 443
