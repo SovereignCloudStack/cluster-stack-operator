@@ -172,7 +172,9 @@ func setLabel(target *unstructured.Unstructured, key, val string) error {
 						return fmt.Errorf("error setting labels on .spec.selector for apps/extensions group: %w", err)
 					}
 				}
+			default:
 			}
+		default:
 		}
 	case "batch":
 		if gvk.Kind == JobKind {

@@ -193,18 +193,17 @@ func (csv Version) Compare(input Version) (int, error) {
 		return 1, nil
 	case csv.Major < input.Major:
 		return -1, nil
-	case csv.Major == input.Major:
+	default:
 		switch {
 		case csv.Patch > input.Patch:
 			return 1, nil
 		case csv.Patch < input.Patch:
 			return -1, nil
-		case csv.Patch == input.Patch:
+		default:
 			return 0, nil
 		}
 	}
 
-	return 0, nil
 }
 
 // String converts a Version struct to a string representation.
