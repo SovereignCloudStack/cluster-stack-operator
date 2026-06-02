@@ -31,6 +31,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          # Use Workload Identity Federation (preferred) or a Service Account Key
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
       - name: Coverage result name
         id: name
         run: |
@@ -59,7 +64,7 @@ jobs:
           GIT_REPOSITORY_NAME: cluster-stacks
           GO111MODULE: "on"
           GIT_ACCESS_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
-        run: make test-unit
+        run: make test-unit GOOGLE_APPLICATION_CREDENTIALS=${{ steps.auth.outputs.credentials_file_path }}
 
       - name: Running integration tests workloadcluster
         env:
