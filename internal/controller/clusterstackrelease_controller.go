@@ -224,7 +224,7 @@ func (r *ClusterStackReleaseReconciler) reconcileDelete(ctx context.Context, rel
 		}
 	}
 
-	template, err := r.templateClusterClassHelmChart(releaseAssets, clusterStackReleaseCR.Name, clusterStackReleaseCR.Namespace)
+	template, err := r.templateClusterClassHelmChart(ctx, releaseAssets, clusterStackReleaseCR.Name, clusterStackReleaseCR.Namespace)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to perform helm template: %w", err)
 	}
@@ -297,7 +297,7 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 
 func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, releaseAssets *release.Release, clusterStackRelease *csov1alpha1.ClusterStackRelease, kubeClient kube.Client) (bool, error) {
 	// template helm chart and apply objects
-	template, err := r.templateClusterClassHelmChart(releaseAssets, clusterStackRelease.Name, clusterStackRelease.Namespace)
+	template, err := r.templateClusterClassHelmChart(ctx, releaseAssets, clusterStackRelease.Name, clusterStackRelease.Namespace)
 	if err != nil {
 		return false, fmt.Errorf("failed to template clusterClass helm chart: %w", err)
 	}
@@ -318,7 +318,7 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 }
 
 // templateClusterClassHelmChart templates the clusterClass helm chart.
-func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAssets *release.Release, name, namespace string) ([]byte, error) {
+func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(ctx context.Context, releaseAssets *release.Release, name, namespace string) ([]byte, error) {
 	clusterClassChart, e := releaseAssets.ClusterClassChartPath()
 	if e != nil {
 		return nil, fmt.Errorf("failed to template clusterClass helm chart: %w", e)
@@ -327,7 +327,7 @@ func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAsset
 	splittedName := strings.Split(name, clusterstack.Separator)
 	releaseName := strings.Join(splittedName[0:4], clusterstack.Separator)
 
-	template, err := helmTemplate(clusterClassChart, releaseName, namespace)
+	template, err := helmTemplate(ctx, clusterClassChart, releaseName, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to template clusterClass helm chart: %w", err)
 	}
@@ -335,14 +335,14 @@ func (*ClusterStackReleaseReconciler) templateClusterClassHelmChart(releaseAsset
 	return template, nil
 }
 
-func helmTemplate(chartPath, releaseName, namespace string) ([]byte, error) {
+func helmTemplate(ctx context.Context, chartPath, releaseName, namespace string) ([]byte, error) {
 	helmCommand := "helm"
 	helmArgs := []string{"template"}
 
 	var cmdOutput bytes.Buffer
 
 	helmArgs = append(helmArgs, releaseName, filepath.Base(chartPath), "--namespace", namespace)
-	helmTemplateCmd := exec.Command(helmCommand, helmArgs...)
+	helmTemplateCmd := exec.CommandContext(ctx, helmCommand, helmArgs...)
 	helmTemplateCmd.Stderr = os.Stderr
 	helmTemplateCmd.Dir = filepath.Dir(chartPath)
 	helmTemplateCmd.Stdout = &cmdOutput

@@ -1,23 +1,18 @@
-name: "PR Title Verifier"
-
-on:
-  pull_request:
-    types: [opened, edited, synchronize, reopened]
-
+name: Verify Pull Request Title
+on: # yamllint disable-line rule:truthy
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
 permissions: {}
+# yamllint disable rule:line-length
 
 jobs:
-  verify:
+  pr-verify:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-
+    name: Verify Pull Request
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
       - name: Validate PR Title Format
         env:
           TITLE: ${{ github.event.pull_request.title }}
@@ -40,3 +35,11 @@ jobs:
           fi
 
           echo "PR title is valid: '$TITLE'"
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify Shellcheck
+        run: make verify-shellcheck
