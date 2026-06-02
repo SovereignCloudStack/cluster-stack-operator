@@ -80,7 +80,7 @@ WORKER_CLUSTER_KUBECONFIG ?= ".workload-cluster-kubeconfig.yaml"
 MGT_CLUSTER_KUBECONFIG ?= ".mgt-cluster-kubeconfig.yaml"
 
 # Kubebuilder.
-export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.29.3
+export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.34.8
 # versions
 CTLPTL_VERSION := 0.8.25
 
@@ -113,7 +113,7 @@ $(ENVSUBST): # Build envsubst from tools folder.
 SETUP_ENVTEST := $(abspath $(TOOLS_BIN_DIR)/setup-envtest)
 setup-envtest: $(SETUP_ENVTEST) ## Build a local copy of setup-envtest
 $(SETUP_ENVTEST): # Build setup-envtest from tools folder.
-	go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20230620070423-a784ee78d04b
+	go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 CTLPTL := $(abspath $(TOOLS_BIN_DIR)/ctlptl)
 ctlptl: $(CTLPTL) ## Build a local copy of ctlptl
