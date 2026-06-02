@@ -80,7 +80,7 @@ WORKER_CLUSTER_KUBECONFIG ?= ".workload-cluster-kubeconfig.yaml"
 MGT_CLUSTER_KUBECONFIG ?= ".mgt-cluster-kubeconfig.yaml"
 
 # Kubebuilder.
-export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.29.3
+export KUBEBUILDER_ENVTEST_KUBERNETES_VERSION ?= 1.34.8
 # versions
 CTLPTL_VERSION := 0.8.25
 
