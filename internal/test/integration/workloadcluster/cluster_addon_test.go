@@ -28,7 +28,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	capisecret "sigs.k8s.io/cluster-api/util/secret"
@@ -96,8 +96,10 @@ var _ = Describe("ClusterAddonReconciler", func() {
 				Namespace: testNs.Name,
 			},
 			Spec: clusterv1.ClusterSpec{
-				Topology: &clusterv1.Topology{
-					Class:   testClusterStackName,
+				Topology: clusterv1.Topology{
+					ClassRef: clusterv1.ClusterClassRef{
+						Name: testClusterStackName,
+					},
 					Version: "v1.27.3",
 				},
 			},
@@ -114,7 +116,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -143,7 +145,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -184,7 +186,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			By("patching the cluster")
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -214,7 +216,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -244,7 +246,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -275,7 +277,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -304,7 +306,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -334,7 +336,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -354,7 +356,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -431,8 +433,10 @@ var _ = Describe("ClusterAddonReconcilerNewWay", func() {
 				Namespace: testNs.Name,
 			},
 			Spec: clusterv1.ClusterSpec{
-				Topology: &clusterv1.Topology{
-					Class:   testNewWayClusterClassName,
+				Topology: clusterv1.Topology{
+					ClassRef: clusterv1.ClusterClassRef{
+						Name: testNewWayClusterClassName,
+					},
 					Version: "v1.27.7",
 				},
 			},
@@ -456,7 +460,7 @@ var _ = Describe("ClusterAddonReconcilerNewWay", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
