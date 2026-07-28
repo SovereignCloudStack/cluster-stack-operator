@@ -24,10 +24,9 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -54,7 +53,7 @@ func (r *ClusterStackReleaseList) SetupWebhookWithManager(mgr ctrl.Manager) erro
 
 // +kubebuilder:webhook:path=/validate-clusterstack-x-k8s-io-v1alpha1-clusterstackrelease,mutating=false,failurePolicy=fail,sideEffects=None,groups=clusterstack.x-k8s.io,resources=clusterstackreleases,verbs=delete,versions=v1alpha1,name=validation.clusterstackrelease.clusterstack.x-k8s.io,admissionReviewVersions={v1,v1alpha1}
 
-var _ webhook.CustomValidator = &ClusterStackReleaseWebhook{}
+var _ admission.CustomValidator = &ClusterStackReleaseWebhook{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type.
 func (*ClusterStackReleaseWebhook) ValidateCreate(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
@@ -94,11 +93,11 @@ func (r *ClusterStackReleaseWebhook) getClustersUsingClusterStackRelease(ctx con
 
 	// list the names of all ClusterClasses that are referenced in Cluster objects
 	for i := range clusterList.Items {
-		if clusterList.Items[i].Spec.Topology == nil {
+		if clusterList.Items[i].Spec.Topology.ClassRef.Name == "" {
 			continue
 		}
 
-		clusterClass := clusterList.Items[i].Spec.Topology.Class
+		clusterClass := clusterList.Items[i].Spec.Topology.ClassRef.Name
 		clusterClassFormated, err := clusterstack.NewFromClusterClassProperties(clusterClass)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read properties from clusterClass string: %w", err)

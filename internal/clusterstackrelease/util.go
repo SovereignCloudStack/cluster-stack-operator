@@ -21,8 +21,8 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Summary returns a ClusterStackReleaseSummary object from a clusterStackRelease.
@@ -37,23 +37,23 @@ func Summary(csr *csov1alpha1.ClusterStackRelease) (csov1alpha1.ClusterStackRele
 	}
 
 	// if csr is ready, we mark that in summary
-	if conditions.IsTrue(csr, clusterv1.ReadyCondition) {
+	if conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAvailableCondition)) != nil && conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAvailableCondition)).Status == metav1.ConditionTrue {
 		summary.Ready = true
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseDone
 		return summary, nil
-	} else if conditions.IsFalse(csr, clusterv1.ReadyCondition) {
+	} else if conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAvailableCondition)) != nil && conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAvailableCondition)).Status == metav1.ConditionFalse {
 		// if it is not ready, then we need to give a reason
-		summary.Message = conditions.GetReason(csr, clusterv1.ReadyCondition)
+		summary.Message = conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAvailableCondition)).Reason
 	}
 
 	// if provider-specific work is done, we are left with applying objects
 	// We don't expect the condition to be not set at all, hence no else case here
 	switch {
-	case conditions.IsTrue(csr, csov1alpha1.ProviderClusterStackReleaseReadyCondition):
+	case conditions.Get(csr, string(csov1alpha1.ProviderClusterStackReleaseReadyCondition)) != nil && conditions.Get(csr, string(csov1alpha1.ProviderClusterStackReleaseReadyCondition)).Status == metav1.ConditionTrue:
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseApplyingObjects
-	case conditions.IsTrue(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition):
+	case conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition)) != nil && conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition)).Status == metav1.ConditionTrue:
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseProviderSpecificWork
-	case conditions.IsFalse(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition):
+	case conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition)) != nil && conditions.Get(csr, string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition)).Status == metav1.ConditionFalse:
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseDownloadingAssets
 	}
 

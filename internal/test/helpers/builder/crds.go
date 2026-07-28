@@ -35,6 +35,10 @@ func generateCRD(gvk schema.GroupVersionKind, properties map[string]apiextension
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: contract.CalculateCRDName(gvk.Group, gvk.Kind),
+			Labels: map[string]string{
+				"cluster.x-k8s.io/v1beta2": gvk.Version,
+				"cluster.x-k8s.io/v1beta1": gvk.Version,
+			},
 		},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
 			Group: gvk.Group,

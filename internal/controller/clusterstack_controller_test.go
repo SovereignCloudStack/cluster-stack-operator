@@ -32,7 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/patch"
 )
@@ -495,7 +495,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}
 
 				Eventually(func() error {
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef)
 					return err
 				}, timeout).Should(BeNil())
 			})
@@ -568,7 +568,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name); err != nil {
+					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef); err != nil {
 						testEnv.GetLogger().Error(err, "failed to get providerClusterStackRelease", "ref", foundProviderclusterStackReleaseRef)
 						return err
 					}
@@ -580,7 +580,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name); err != nil {
+					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef); err != nil {
 						testEnv.GetLogger().Error(err, "failed to get providerClusterStackRelease", "ref", foundProviderclusterStackReleaseRef)
 						return err
 					}
@@ -611,7 +611,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef)
 					return apierrors.IsNotFound(err)
 				}, timeout, interval).Should(BeTrue())
 			})
@@ -839,8 +839,11 @@ var _ = Describe("clusterStack validation", func() {
 					Namespace: testNs.Name,
 				},
 				Spec: clusterv1.ClusterSpec{
-					Topology: &clusterv1.Topology{
-						Class: "docker-ferrol-1-27-v6",
+					Topology: clusterv1.Topology{
+						ClassRef: clusterv1.ClusterClassRef{
+							Name: "docker-ferrol-1-27-v6",
+						},
+						Version: "1.27.3",
 					},
 				},
 			}
@@ -858,14 +861,14 @@ var _ = Describe("clusterStack validation", func() {
 		})
 
 		It("should allow delete if existing Clusters reference ClusterClasses that do not follow the cluster stack naming convention", func() {
-			cluster.Spec.Topology.Class = "test-cluster-class"
+			cluster.Spec.Topology.ClassRef.Name = "test-cluster-class"
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
 
 			Expect(testEnv.Delete(ctx, clusterStack)).To(Succeed())
 		})
 
 		It("should allow delete if existing Clusters reference different ClusterClasses", func() {
-			cluster.Spec.Topology.Class = "docker-ferrol-1-25-v1"
+			cluster.Spec.Topology.ClassRef.Name = "docker-ferrol-1-25-v1"
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
 
 			Expect(testEnv.Delete(ctx, clusterStack)).To(Succeed())

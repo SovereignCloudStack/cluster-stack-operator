@@ -20,7 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 const (
@@ -43,7 +43,7 @@ type DockerClusterSpec struct {
 	// Instead, the docker cluster controller will simply copy these into the Status and allow the Cluster API
 	// controllers to do what they will with the defined failure domains.
 	// +optional
-	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
+	FailureDomains clusterv1beta1.FailureDomains `json:"failureDomains,omitempty"`
 
 	// LoadBalancer allows defining configurations for the cluster load balancer.
 	// +optional
@@ -90,26 +90,44 @@ type DockerClusterStatus struct {
 	// FailureDomains don't mean much in CAPD since it's all local, but we can see how the rest of cluster API
 	// will use this if we populate it.
 	// +optional
-	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
+	FailureDomains clusterv1beta1.FailureDomains `json:"failureDomains,omitempty"`
 
 	// Conditions defines current service state of the DockerCluster.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
+
+	// v1beta2 groups all the fields that will be added or modified in DockerCluster's's status with the V1Beta2 version.
+	// +optional
+	V1Beta2 *DockerClusterV1Beta2Status `json:"v1beta2,omitempty"`
+}
+
+// DockerClusterV1Beta2Status groups all the fields that will be added or modified in DockerCluster with the V1Beta2 version.
+// See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
+type DockerClusterV1Beta2Status struct {
+	// conditions represents the observations of a DockerCluster's current state.
+	// Known condition types are Ready, LoadBalancerAvailable, Deleting, Paused.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // APIEndpoint represents a reachable Kubernetes API endpoint.
 type APIEndpoint struct {
 	// Host is the hostname on which the API server is serving.
+	// +optional
 	Host string `json:"host"`
 
 	// Port is the port on which the API server is serving.
 	// Defaults to 6443 if not set.
+	// +optional
 	Port int `json:"port"`
 }
 
 // +kubebuilder:resource:path=dockerclusters,scope=Namespaced,categories=cluster-api
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion
 // +kubebuilder:object:root=true
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of DockerCluster"
@@ -123,14 +141,30 @@ type DockerCluster struct {
 	Status DockerClusterStatus `json:"status,omitempty"`
 }
 
-// GetConditions returns the set of conditions for this object.
-func (c *DockerCluster) GetConditions() clusterv1.Conditions {
+// GetV1Beta1Conditions returns the set of conditions for this object.
+func (c *DockerCluster) GetV1Beta1Conditions() clusterv1beta1.Conditions {
 	return c.Status.Conditions
 }
 
-// SetConditions sets the conditions on this object.
-func (c *DockerCluster) SetConditions(conditions clusterv1.Conditions) {
+// SetV1Beta1Conditions sets the conditions on this object.
+func (c *DockerCluster) SetV1Beta1Conditions(conditions clusterv1beta1.Conditions) {
 	c.Status.Conditions = conditions
+}
+
+// GetConditions returns the set of conditions for this object.
+func (c *DockerCluster) GetConditions() []metav1.Condition {
+	if c.Status.V1Beta2 == nil {
+		return nil
+	}
+	return c.Status.V1Beta2.Conditions
+}
+
+// SetConditions sets conditions for an API object.
+func (c *DockerCluster) SetConditions(conditions []metav1.Condition) {
+	if c.Status.V1Beta2 == nil {
+		c.Status.V1Beta2 = &DockerClusterV1Beta2Status{}
+	}
+	c.Status.V1Beta2.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true

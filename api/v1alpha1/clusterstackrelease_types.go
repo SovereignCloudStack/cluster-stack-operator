@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 const (
@@ -52,7 +51,7 @@ type ClusterStackReleaseStatus struct {
 
 	// Conditions defines current service state of the ClusterAddon.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -74,12 +73,12 @@ type ClusterStackRelease struct {
 }
 
 // GetConditions returns the observations of the operational state of the ClusterAddon resource.
-func (r *ClusterStackRelease) GetConditions() clusterv1.Conditions {
+func (r *ClusterStackRelease) GetConditions() []metav1.Condition {
 	return r.Status.Conditions
 }
 
-// SetConditions sets the underlying service state of the ClusterAddon to the predescribed clusterv1.Conditions.
-func (r *ClusterStackRelease) SetConditions(conditions clusterv1.Conditions) {
+// SetConditions sets the underlying service state of the ClusterAddon to the predescribed conditions.
+func (r *ClusterStackRelease) SetConditions(conditions []metav1.Condition) {
 	r.Status.Conditions = conditions
 }
 

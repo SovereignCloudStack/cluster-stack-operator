@@ -16,11 +16,13 @@ limitations under the License.
 
 package v1alpha1
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+// ConditionType is defined as a string type (CAPI v1.12.2+)
+// metav1.ConditionType was removed in favor of string
+type ConditionType = string
 
 const (
 	// ClusterReadyCondition reports on whether the associated cluster is ready.
-	ClusterReadyCondition clusterv1.ConditionType = "ClusterReady"
+	ClusterReadyCondition ConditionType = "ClusterReady"
 
 	// ControlPlaneNotReadyReason is used when the control planes of a cluster are not ready yet.
 	ControlPlaneNotReadyReason = "ControlPlaneNotReady"
@@ -28,7 +30,7 @@ const (
 
 const (
 	// EvaluatedCELCondition reports on whether the CEL expression is evaluated properly.
-	EvaluatedCELCondition clusterv1.ConditionType = "EvaluatedCEL"
+	EvaluatedCELCondition ConditionType = "EvaluatedCEL"
 
 	// FailedToEvaluatePreConditionReason is used when some pre CEL expression have been failed to evaluate.
 	FailedToEvaluatePreConditionReason = "FailedToEvaluatePreCondition"
@@ -39,7 +41,7 @@ const (
 
 const (
 	// HelmChartFoundCondition reports when mentioned helm chart is present in the cluster addon tar archive.
-	HelmChartFoundCondition clusterv1.ConditionType = "HelmChartFound"
+	HelmChartFoundCondition ConditionType = "HelmChartFound"
 
 	// HelmChartMissingReason is used when mentioned helm chart is missing in the cluster addon tar archive.
 	HelmChartMissingReason = "HelmChartMissing"
@@ -47,7 +49,7 @@ const (
 
 const (
 	// HelmChartTemplatedCondition reports on whether the relevant helm chart has been templated properly.
-	HelmChartTemplatedCondition clusterv1.ConditionType = "HelmChartTemplated"
+	HelmChartTemplatedCondition ConditionType = "HelmChartTemplated"
 
 	// TemplateOldClusterStackOverwriteFailedReason is used when old cluster stack overwrite.yaml is wrong.
 	TemplateOldClusterStackOverwriteFailedReason = "TemplateOldClusterStackOverwriteFailed"
@@ -64,7 +66,7 @@ const (
 
 const (
 	// ClusterAddonConfigValidatedCondition reports when there is a error parsing clusteraddon.yaml.
-	ClusterAddonConfigValidatedCondition clusterv1.ConditionType = "ClusterAddonConfigValidated"
+	ClusterAddonConfigValidatedCondition ConditionType = "ClusterAddonConfigValidated"
 
 	// ParsingClusterAddonConfigFailedReason is used when there's some error happen while parsing clusteraddon.yaml.
 	ParsingClusterAddonConfigFailedReason = "ParsingClusterAddonConfigFailed"
@@ -72,7 +74,7 @@ const (
 
 const (
 	// HelmChartAppliedCondition reports on whether the relevant helm chart has been applied.
-	HelmChartAppliedCondition clusterv1.ConditionType = "HelmChartApplied"
+	HelmChartAppliedCondition ConditionType = "HelmChartApplied"
 
 	// FailedToApplyObjectsReason is used when some objects have been failed to apply.
 	FailedToApplyObjectsReason = "FailedToApplyObjects"
@@ -83,7 +85,7 @@ const (
 
 const (
 	// HookServerReadyCondition reports on whether hook server is ready or not.
-	HookServerReadyCondition clusterv1.ConditionType = "HookServerReady"
+	HookServerReadyCondition ConditionType = "HookServerReady"
 
 	// HookServerUnresponsiveReason is used when hook server don't update the clusterAddon.Spec.Hook.
 	HookServerUnresponsiveReason = "HookServerUnresponsive"
@@ -91,7 +93,7 @@ const (
 
 const (
 	// HelmChartDeletedCondition reports on whether the relevant helm chart has been applied.
-	HelmChartDeletedCondition clusterv1.ConditionType = "HelmChartDeleted"
+	HelmChartDeletedCondition ConditionType = "HelmChartDeleted"
 
 	// FailedToDeleteObjectsReason is used when some objects have been failed to delete.
 	FailedToDeleteObjectsReason = "FailedToDeleteObjects"
@@ -99,7 +101,7 @@ const (
 
 const (
 	// ProviderClusterStackReleasesSyncedCondition reports on whether the ProviderClusterStackReleases are ready.
-	ProviderClusterStackReleasesSyncedCondition clusterv1.ConditionType = "ProviderClusterStackReleasesSynced"
+	ProviderClusterStackReleasesSyncedCondition ConditionType = "ProviderClusterStackReleasesSynced"
 
 	// ProviderTemplateNotFoundReason is used when providerTemplate is not found.
 	ProviderTemplateNotFoundReason = "ProviderTemplateNotFound"
@@ -110,7 +112,7 @@ const (
 
 const (
 	// ClusterStackReleasesSyncedCondition reports on whether the ClusterStackReleases are ready.
-	ClusterStackReleasesSyncedCondition clusterv1.ConditionType = "ClusterStackReleasesSynced" //#nosec
+	ClusterStackReleasesSyncedCondition ConditionType = "ClusterStackReleasesSynced" //#nosec
 )
 
 const (
@@ -131,7 +133,7 @@ const (
 
 const (
 	// ProviderClusterStackReleaseReadyCondition reports on whether the relevant provider-specific object is ready.
-	ProviderClusterStackReleaseReadyCondition clusterv1.ConditionType = "ProviderClusterStackReleaseReady"
+	ProviderClusterStackReleaseReadyCondition ConditionType = "ProviderClusterStackReleaseReady"
 
 	// ProcessOngoingReason is used when the process of the provider-specific object is still ongoing.
 	ProcessOngoingReason = "ProcessOngoing"
@@ -139,7 +141,7 @@ const (
 
 const (
 	// AssetsClientAPIAvailableCondition is used when AssetsClient API is available.
-	AssetsClientAPIAvailableCondition clusterv1.ConditionType = "AssetsClientAPIAvailable"
+	AssetsClientAPIAvailableCondition ConditionType = "AssetsClientAPIAvailable"
 
 	// FailedCreateAssetsClientReason is used when user don't specify the token or environment variable required for initializing the assets client.
 	FailedCreateAssetsClientReason = "FailedCreateAssetsClient" //#nosec
@@ -147,7 +149,7 @@ const (
 
 const (
 	// ReleasesSyncedCondition is used when releases have been synced successfully.
-	ReleasesSyncedCondition clusterv1.ConditionType = "ReleasesSynced"
+	ReleasesSyncedCondition ConditionType = "ReleasesSynced"
 
 	// FailedToSyncReason is used when releases could not be synced.
 	FailedToSyncReason = "FailedToSync"

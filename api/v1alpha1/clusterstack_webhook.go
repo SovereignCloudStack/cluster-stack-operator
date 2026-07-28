@@ -27,10 +27,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -58,7 +57,7 @@ func (r *ClusterStackList) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // +kubebuilder:webhook:path=/validate-clusterstack-x-k8s-io-v1alpha1-clusterstack,mutating=false,failurePolicy=fail,sideEffects=None,groups=clusterstack.x-k8s.io,resources=clusterstacks,verbs=create;update;delete,versions=v1alpha1,name=validation.clusterstack.clusterstack.x-k8s.io,admissionReviewVersions={v1,v1alpha1}
 
-var _ webhook.CustomValidator = &ClusterStackWebhook{}
+var _ admission.CustomValidator = &ClusterStackWebhook{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type.
 func (r *ClusterStackWebhook) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
@@ -168,11 +167,11 @@ func (r *ClusterStackWebhook) getClustersUsingClusterStack(ctx context.Context, 
 
 	// list the names of all ClusterClasses that are referenced in Cluster objects
 	for i := range clusterList.Items {
-		if clusterList.Items[i].Spec.Topology == nil {
+		if clusterList.Items[i].Spec.Topology.ClassRef.Name == "" {
 			continue
 		}
 
-		clusterClass := clusterList.Items[i].Spec.Topology.Class
+		clusterClass := clusterList.Items[i].Spec.Topology.ClassRef.Name
 		if clusterClass == "" {
 			continue
 		}

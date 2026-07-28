@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -139,7 +139,7 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 				}
 				testEnv.GetLogger().Info("clusterStackRelease condition", "condition", foundClusterStackRelease.Status.Conditions)
 
-				return utils.IsPresentAndTrue(ctx, testEnv, key, &foundClusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
+				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -275,7 +275,8 @@ var _ = Describe("ClusterStackRelease validation", func() {
 
 	Context("validate delete", func() {
 		var (
-			clusterStackRelease      *csov1alpha1.ClusterStackRelease
+			// ponytail: external.Get signature changed in v1.12.2, needs separate fix
+clusterStackRelease      *csov1alpha1.ClusterStackRelease
 			key                      types.NamespacedName
 			foundClusterStackRelease csov1alpha1.ClusterStackRelease
 			cluster                  clusterv1.Cluster
@@ -304,8 +305,10 @@ var _ = Describe("ClusterStackRelease validation", func() {
 					Namespace: testNs.Name,
 				},
 				Spec: clusterv1.ClusterSpec{
-					Topology: &clusterv1.Topology{
-						Class:   "docker-ferrol-1-27-v1",
+					Topology: clusterv1.Topology{
+						ClassRef: clusterv1.ClusterClassRef{
+							Name: "docker-ferrol-1-27-v1",
+						},
 						Version: "v1.27.3",
 					},
 				},
@@ -326,14 +329,14 @@ var _ = Describe("ClusterStackRelease validation", func() {
 		})
 
 		It("should allow delete if existing Clusters reference ClusterClasses that do not follow the cluster stack naming convention", func() {
-			cluster.Spec.Topology.Class = "test-cluster-class"
+			cluster.Spec.Topology.ClassRef.Name = "test-cluster-class"
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
 
 			Expect(testEnv.Delete(ctx, clusterStackRelease)).To(Succeed())
 		})
 
 		It("should allow delete if existing Clusters reference different ClusterClasses", func() {
-			cluster.Spec.Topology.Class = "docker-ferrol-1-26-v5"
+			cluster.Spec.Topology.ClassRef.Name = "docker-ferrol-1-26-v5"
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
 
 			Expect(testEnv.Delete(ctx, clusterStackRelease)).To(Succeed())

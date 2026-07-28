@@ -54,7 +54,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -119,8 +119,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	}
 
 	defer func() {
-		conditions.SetSummary(clusterAddon)
-
+		ensureConditionReasons(&clusterAddon.Status.Conditions)
 		if err := patchHelper.Patch(ctx, clusterAddon); err != nil {
 			reterr = fmt.Errorf("failed to patch clusterAddon: %w", err)
 		}
@@ -149,13 +148,12 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 	restConfig, err := restConfigClient.RestConfig(ctx)
 	if err != nil {
-		conditions.MarkFalse(
-			clusterAddon,
-			csov1alpha1.ClusterReadyCondition,
-			csov1alpha1.ControlPlaneNotReadyReason,
-			clusterv1.ConditionSeverityWarning,
-			"kubeconfig not there (yet)",
-		)
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterReadyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(csov1alpha1.ControlPlaneNotReadyReason),
+			Message: "kubeconfig not there (yet)",
+		})
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
@@ -170,48 +168,66 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		}
 
 		if _, err := clientSet.Discovery().RESTClient().Get().AbsPath("/readyz").DoRaw(ctx); err != nil {
-			conditions.MarkFalse(
-				clusterAddon,
-				csov1alpha1.ClusterReadyCondition,
-				csov1alpha1.ControlPlaneNotReadyReason,
-				clusterv1.ConditionSeverityInfo,
-				"control plane not ready yet",
-			)
+			conditions.Set(clusterAddon, metav1.Condition{
+				Type:    string(csov1alpha1.ClusterReadyCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(csov1alpha1.ControlPlaneNotReadyReason),
+				Message: "control plane not ready yet",
+			})
 
 			// wait for cluster to be ready
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	}
 
-	// cluster is ready, so we set a condition and can continue as well
-	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterReadyCondition)
+// cluster is ready, so we set a condition and can continue as well
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterReadyCondition),
+			Status:  metav1.ConditionTrue,
+			Reason:  "ClusterReady",
+			Message: "cluster is ready",
+		})
 
-	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.Class), r.ReleaseDirectory)
+		releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.ClassRef.Name), r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.IssueWithReleaseAssetsReason, clusterv1.ConditionSeverityError, "%s", err.Error())
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(csov1alpha1.IssueWithReleaseAssetsReason),
+			Message: err.Error(),
+		})
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	if download {
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.ReleaseAssetsNotDownloadedYetReason, clusterv1.ConditionSeverityInfo, "release assets not downloaded yet")
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(csov1alpha1.ReleaseAssetsNotDownloadedYetReason),
+			Message: "release assets not downloaded yet",
+		})
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	// Check for helm charts in the release assets. If they are not present, then something went wrong.
-	if err := releaseAsset.CheckHelmCharts(); err != nil {
-		msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
-		conditions.MarkFalse(
-			clusterAddon,
-			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
-			csov1alpha1.IssueWithReleaseAssetsReason,
-			clusterv1.ConditionSeverityError,
-			"%s", msg,
-		)
-		record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
-		return reconcile.Result{}, nil
-	}
+// Check for helm charts in the release assets. If they are not present, then something went wrong.
+		if err := releaseAsset.CheckHelmCharts(); err != nil {
+			msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
+			conditions.Set(clusterAddon, metav1.Condition{
+				Type:    string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(csov1alpha1.IssueWithReleaseAssetsReason),
+				Message: msg,
+			})
+			record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
+			return reconcile.Result{}, nil
+		}
 
-	// set downloaded condition if able to read metadata file
-	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
+		// set downloaded condition if able to read metadata file
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition),
+			Status:  metav1.ConditionTrue,
+			Reason:  "AssetsReady",
+			Message: "release assets are ready",
+		})
 
 	in := &templateAndApplyClusterAddonInput{
 		clusterAddonChartPath:  releaseAsset.ClusterAddonChartPath(),
@@ -222,7 +238,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		restConfig:             restConfig,
 	}
 
-	in.clusterAddonConfigPath, err = r.getClusterAddonConfigPath(cluster.Spec.Topology.Class)
+	in.clusterAddonConfigPath, err = r.getClusterAddonConfigPath(cluster.Spec.Topology.ClassRef.Name)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed to get cluster addon config path: %w", err)
 	}
@@ -232,7 +248,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// If it is not set, the Helm chart has never been applied.
 	// If it is set and does not equal the ClusterClass of the cluster, then it is outdated and has to be updated.
 	if in.clusterAddonConfigPath == "" {
-		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class {
+		if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.ClassRef.Name {
 			metadata := releaseAsset.Meta
 
 			// only apply the Helm chart again if the Helm chart version has also changed from one cluster stack release to the other
@@ -241,52 +257,75 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 				shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in)
 				if err != nil {
-					conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply: %s", err.Error())
+conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.HelmChartAppliedCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(csov1alpha1.FailedToApplyObjectsReason),
+			Message: fmt.Sprintf("failed to apply: %s", err.Error()),
+		})
 					return ctrl.Result{}, fmt.Errorf("failed to apply helm chart: %w", err)
 				}
 				if shouldRequeue {
 					// set latest version and requeue
 					clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
-					clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+					clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.ClassRef.Name
 
-					// set condition to false as we have not successfully applied Helm chart
-					conditions.MarkFalse(
-						clusterAddon,
-						csov1alpha1.HelmChartAppliedCondition,
-						csov1alpha1.FailedToApplyObjectsReason,
-						clusterv1.ConditionSeverityInfo,
-						"failed to successfully apply everything",
-					)
+// set condition to false as we have not successfully applied Helm chart
+				conditions.Set(clusterAddon, metav1.Condition{
+					Type:    string(csov1alpha1.ClusterReadyCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.ControlPlaneNotReadyReason),
+					Message: "control plane not ready yet",
+				})
 					return ctrl.Result{RequeueAfter: 20 * time.Second}, nil
 				}
 
 				// Helm chart has been applied successfully
 				clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
-				conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.HelmChartAppliedCondition),
+			Status:  metav1.ConditionTrue,
+			Reason:  "HelmChartApplied",
+			Message: "Helm chart has been applied successfully",
+		})
 			}
 
 			clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueCreated)
 			clusterAddon.Spec.Hook = ""
-			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.ClassRef.Name
 			clusterAddon.Status.Ready = true
 			return ctrl.Result{}, nil
 		}
 
 		// if condition is false we have not yet successfully applied the helm chart
-		if conditions.IsFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition) {
+		if conditions.Get(clusterAddon, csov1alpha1.HelmChartAppliedCondition) == nil || conditions.Get(clusterAddon, csov1alpha1.HelmChartAppliedCondition).Status != metav1.ConditionTrue {
 			shouldRequeue, err := r.templateAndApplyClusterAddonHelmChart(ctx, in)
 			if err != nil {
-				conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply: %s", err.Error())
+				conditions.Set(clusterAddon, metav1.Condition{
+				Type:    string(csov1alpha1.HelmChartAppliedCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(csov1alpha1.FailedToApplyObjectsReason),
+				Message: fmt.Sprintf("failed to apply: %s", err.Error()),
+			})
 				return ctrl.Result{}, fmt.Errorf("failed to apply helm chart: %w", err)
 			}
 			if shouldRequeue {
-				// set condition to false as we have not yet successfully applied helm chart
-				conditions.MarkFalse(clusterAddon, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityInfo, "failed to successfully apply everything")
+				conditions.Set(clusterAddon, metav1.Condition{
+				Type:    string(csov1alpha1.HelmChartAppliedCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(csov1alpha1.FailedToApplyObjectsReason),
+				Message: "failed to successfully apply everything",
+			})
 				return ctrl.Result{RequeueAfter: 20 * time.Second}, nil
 			}
 
 			// set condition that helm chart has been applied successfully
-			conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+			conditions.Set(clusterAddon, metav1.Condition{
+				Type:    string(csov1alpha1.HelmChartAppliedCondition),
+				Status:  metav1.ConditionTrue,
+				Reason:  "HelmChartApplied",
+				Message: "Helm chart has been applied successfully",
+			})
 		}
 
 		clusterAddon.Spec.Hook = ""
@@ -298,13 +337,12 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// multi-stage cluster addon flow
 	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
 	if err != nil {
-		conditions.MarkFalse(
-			clusterAddon,
-			csov1alpha1.ClusterAddonConfigValidatedCondition,
-			csov1alpha1.ParsingClusterAddonConfigFailedReason,
-			clusterv1.ConditionSeverityError,
-			"cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error(),
-		)
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterAddonConfigValidatedCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(csov1alpha1.ParsingClusterAddonConfigFailedReason),
+			Message: fmt.Sprintf("cluster addon config (clusteraddon.yaml) is wrong: %s", err.Error()),
+		})
 
 		record.Warnf(
 			clusterAddon,
@@ -314,7 +352,12 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 		return reconcile.Result{}, nil
 	}
-	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterAddonConfigValidatedCondition)
+	conditions.Set(clusterAddon, metav1.Condition{
+		Type:    string(csov1alpha1.ClusterAddonConfigValidatedCondition),
+		Status:  metav1.ConditionTrue,
+		Reason:  "ClusterAddonConfigValidated",
+		Message: "cluster addon config is validated",
+	})
 
 	// clusteraddon.yaml in the release.
 	clusterAddonConfig, err := clusteraddon.ParseConfig(in.clusterAddonConfigPath)
@@ -363,7 +406,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 
 	// In case the Kubernetes version stays the same, the hook server does not trigger.
 	// Therefore, we have to check whether the ClusterStack is upgraded and if that is the case, the ClusterAddons have to be upgraded as well.
-	if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.Class && oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
+	if clusterAddon.Spec.ClusterStack != cluster.Spec.Topology.ClassRef.Name && oldRelease != nil && oldRelease.Meta.Versions.Kubernetes == releaseAsset.Meta.Versions.Kubernetes {
 		if clusterAddon.Spec.Version != releaseAsset.Meta.Versions.Components.ClusterAddon {
 			if clusterAddon.Status.Ready || len(clusterAddon.Status.Stages) == 0 {
 				clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, len(clusterAddonConfig.AddonStages[beforeClusterUpgradeHook]))
@@ -377,7 +420,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 		} else {
 			// If the cluster addon version don't change we don't want to apply helm charts again.
-			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+			clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.ClassRef.Name
 			clusterAddon.Status.Ready = true
 		}
 	}
@@ -426,7 +469,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueUpgraded)
 
 		// Helm chart has been applied successfully
-		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+conditions.Set(clusterAddon, metav1.Condition{Type: string(csov1alpha1.HelmChartAppliedCondition), Status: metav1.ConditionTrue, Reason: "HelmChartApplied", Message: "Helm chart has been applied successfully"})
 
 		// remove the status resource if hook is finished
 		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
@@ -435,7 +478,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
 
 		// update the latest cluster class
-		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.ClassRef.Name
 		clusterAddon.Status.Ready = true
 
 		// unset spec hook and make cluster addon ready
@@ -447,15 +490,15 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	// If hook is empty we can don't want to proceed executing staged according to current hook
 	// hence we can return.
 	if clusterAddon.Spec.Hook == "" {
-		conditions.MarkFalse(clusterAddon,
-			csov1alpha1.HookServerReadyCondition,
-			csov1alpha1.HookServerUnresponsiveReason,
-			clusterv1.ConditionSeverityInfo,
-			"hook server hasn't updated the spec.hook yet",
-		)
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    csov1alpha1.HookServerReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.HookServerUnresponsiveReason,
+			Message: "hook server hasn't updated the spec.hook yet",
+		})
 		return reconcile.Result{}, nil
 	}
-	conditions.MarkTrue(clusterAddon, csov1alpha1.HookServerReadyCondition)
+	conditions.Set(clusterAddon, metav1.Condition{Type: string(csov1alpha1.HookServerReadyCondition), Status: metav1.ConditionTrue, Reason: "HookServerReady", Message: "hook server is ready"})
 
 	for _, stage := range clusterAddonConfig.AddonStages[clusterAddon.Spec.Hook] {
 		shouldRequeue, err := r.executeStage(ctx, stage, in)
@@ -495,13 +538,13 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		// if upgrade annotation is not present add the create annotation
 		clusterAddon.SetStageAnnotations(csov1alpha1.StageAnnotationValueCreated)
 
-		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.Class
+		clusterAddon.Spec.ClusterStack = cluster.Spec.Topology.ClassRef.Name
 		clusterAddon.Status.Ready = true
 	}
 
 	// Helm chart has been applied successfully
 	// clusterAddon.Spec.Version = metadata.Versions.Components.ClusterAddon
-	conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+	conditions.Set(clusterAddon, metav1.Condition{Type: string(csov1alpha1.HelmChartAppliedCondition), Status: metav1.ConditionTrue, Reason: "HelmChartApplied", Message: "Helm chart has been applied successfully"})
 
 	// remove the helm chart status from the status.
 	clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
@@ -769,14 +812,12 @@ func (r *ClusterAddonReconciler) executeStage(ctx context.Context, stage *cluste
 	_, exists := in.chartMap[stage.Name]
 	if !exists {
 		// do not reconcile by returning error, just create an event.
-		conditions.MarkFalse(
-			in.clusterAddon,
-			csov1alpha1.HelmChartFoundCondition,
-			csov1alpha1.HelmChartMissingReason,
-			clusterv1.ConditionSeverityInfo,
-			"helm chart name doesn't exists in the cluster addon helm chart: %q",
-			stage.Name,
-		)
+		conditions.Set(in.clusterAddon, metav1.Condition{
+			Type:    string(csov1alpha1.ClusterReadyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(csov1alpha1.ControlPlaneNotReadyReason),
+			Message: "control plane not ready yet",
+		})
 		return false, nil
 	}
 
@@ -789,13 +830,15 @@ check:
 			logger.V(1).Info("starting to evaluate pre condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPreCondition); err != nil {
 				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
-					conditions.MarkFalse(
-						in.clusterAddon,
-						csov1alpha1.EvaluatedCELCondition,
-						csov1alpha1.FailedToEvaluatePreConditionReason,
-						clusterv1.ConditionSeverityInfo,
-						"failed to successfully evaluate pre condition: %q: %s", stage.Name, err.Error(),
-					)
+conditions.Set(
+					in.clusterAddon,
+					metav1.Condition{
+						Type:    string(csov1alpha1.EvaluatedCELCondition),
+						Status:  metav1.ConditionFalse,
+						Reason:  string(csov1alpha1.FailedToEvaluatePreConditionReason),
+						Message: fmt.Sprintf("failed to successfully evaluate pre condition: %q: %s", stage.Name, err.Error()),
+					},
+				)
 
 					in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseWaitingForPreCondition)
 
@@ -826,24 +869,25 @@ check:
 
 			newResources, shouldRequeue, err := in.kubeClient.ApplyNewClusterStack(ctx, oldTemplate, newTemplate)
 			if err != nil {
-				conditions.MarkFalse(
-					in.clusterAddon,
-					csov1alpha1.HelmChartAppliedCondition,
-					csov1alpha1.FailedToApplyObjectsReason,
-					clusterv1.ConditionSeverityInfo,
-					"failed to successfully apply helm chart: %q: %s", stage.Name, err.Error(),
-				)
+conditions.Set(
+				in.clusterAddon,
+				metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartAppliedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.FailedToApplyObjectsReason),
+					Message: fmt.Sprintf("failed to successfully apply helm chart: %q: %s", stage.Name, err.Error()),
+				},
+			)
 
 				return false, fmt.Errorf("failed to apply objects from cluster addon Helm chart: %w", err)
 			}
-			if shouldRequeue {
-				conditions.MarkFalse(
-					in.clusterAddon,
-					csov1alpha1.HelmChartAppliedCondition,
-					csov1alpha1.FailedToApplyObjectsReason,
-					clusterv1.ConditionSeverityInfo,
-					"failed to successfully apply helm chart: %q", stage.Name,
-				)
+if shouldRequeue {
+				conditions.Set(in.clusterAddon, metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartAppliedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.FailedToApplyObjectsReason),
+					Message: "failed to successfully apply everything",
+				})
 
 				return true, nil
 			}
@@ -865,12 +909,14 @@ check:
 		logger.V(1).Info("starting to template helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 		helmTemplate, err := helmTemplateNewClusterStack(in, stage.Name)
 		if err != nil {
-			conditions.MarkFalse(
+			conditions.Set(
 				in.clusterAddon,
-				csov1alpha1.HelmChartTemplatedCondition,
-				csov1alpha1.TemplateNewClusterStackFailedReason,
-				clusterv1.ConditionSeverityError,
-				"failed to template new helm chart: %s", err.Error(),
+				metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartTemplatedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.TemplateNewClusterStackFailedReason),
+					Message: fmt.Sprintf("failed to template new helm chart: %s", err.Error()),
+				},
 			)
 
 			return false, nil
@@ -879,12 +925,14 @@ check:
 
 		deletedResources, shouldRequeue, err := in.kubeClient.DeleteNewClusterStack(ctx, helmTemplate)
 		if err != nil {
-			conditions.MarkFalse(
+			conditions.Set(
 				in.clusterAddon,
-				csov1alpha1.HelmChartDeletedCondition,
-				csov1alpha1.FailedToDeleteObjectsReason,
-				clusterv1.ConditionSeverityInfo,
-				"failed to successfully delete helm chart: %q", stage.Name,
+				metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartDeletedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.FailedToDeleteObjectsReason),
+					Message: fmt.Sprintf("failed to successfully delete helm chart: %q", stage.Name),
+				},
 			)
 
 			return false, fmt.Errorf("failed to delete objects from cluster addon Helm chart: %w", err)
@@ -913,13 +961,15 @@ check:
 			logger.V(1).Info("starting to evaluate post condition", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
 			if err := getDynamicResourceAndEvaluateCEL(ctx, in.dynamicClient, in.discoverClient, stage.WaitForPostCondition); err != nil {
 				if errors.Is(err, clusteraddon.ErrConditionNotMatch) {
-					conditions.MarkFalse(
-						in.clusterAddon,
-						csov1alpha1.EvaluatedCELCondition,
-						csov1alpha1.FailedToEvaluatePostConditionReason,
-						clusterv1.ConditionSeverityInfo,
-						"failed to successfully evaluate post condition: %q: %s", stage.Name, err.Error(),
-					)
+conditions.Set(
+					in.clusterAddon,
+					metav1.Condition{
+						Type:    string(csov1alpha1.EvaluatedCELCondition),
+						Status:  metav1.ConditionFalse,
+						Reason:  string(csov1alpha1.FailedToEvaluatePostConditionReason),
+						Message: fmt.Sprintf("failed to successfully evaluate post condition: %q: %s", stage.Name, err.Error()),
+					},
+				)
 
 					return true, nil
 				}
@@ -941,13 +991,14 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 	// initiate assets client.
 	gc, err := r.AssetsClientFactory.NewClient(ctx)
 	if err != nil {
-		isSet := conditions.IsFalse(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition)
-		conditions.MarkFalse(clusterAddon,
-			csov1alpha1.AssetsClientAPIAvailableCondition,
-			csov1alpha1.FailedCreateAssetsClientReason,
-			clusterv1.ConditionSeverityError,
-			"%s", err.Error(),
-		)
+		isSet := conditions.Get(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition) != nil &&
+		conditions.Get(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition).Status == metav1.ConditionFalse
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    csov1alpha1.AssetsClientAPIAvailableCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.FailedCreateAssetsClientReason,
+			Message: fmt.Sprintf("%s", err.Error()),
+		})
 		record.Warn(clusterAddon, "FailedCreateAssetsClient", err.Error())
 
 		// give the assets client a second change
@@ -957,20 +1008,27 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 		return nil, false, nil
 	}
 
-	conditions.MarkTrue(clusterAddon, csov1alpha1.AssetsClientAPIAvailableCondition)
+	conditions.Set(clusterAddon, metav1.Condition{Type: string(csov1alpha1.AssetsClientAPIAvailableCondition), Status: metav1.ConditionTrue, Reason: "AssetsClientAvailable", Message: "assets client API is available"})
 
 	// check if old cluster stack release is present or not.
 	releaseAsset, download, err := release.New(release.ConvertFromClusterClassToClusterStackFormat(clusterAddon.Spec.ClusterStack), r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterAddon,
-			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
-			csov1alpha1.IssueWithReleaseAssetsReason,
-			clusterv1.ConditionSeverityError, "%s", err.Error())
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.IssueWithReleaseAssetsReason,
+			Message: fmt.Sprintf("%s", err.Error()),
+		})
 		return nil, true, nil
 	}
 	if download {
 		// if download is true, it means that the release assets have not been downloaded yet
-		conditions.MarkFalse(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.ReleaseAssetsNotDownloadedYetReason, clusterv1.ConditionSeverityInfo, "assets not downloaded yet")
+		conditions.Set(clusterAddon, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.ReleaseAssetsNotDownloadedYetReason,
+			Message: "assets not downloaded yet",
+		})
 
 		// this is the point where we download the release.
 		// acquire lock so that only one reconcile loop can download the release
@@ -988,19 +1046,21 @@ func (r *ClusterAddonReconciler) downloadOldClusterStackRelease(ctx context.Cont
 
 	if err := releaseAsset.CheckHelmCharts(); err != nil {
 		msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
-		conditions.MarkFalse(
+		conditions.Set(
 			clusterAddon,
-			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
-			csov1alpha1.IssueWithReleaseAssetsReason,
-			clusterv1.ConditionSeverityError,
-			"%s", msg,
+			metav1.Condition{
+				Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  csov1alpha1.IssueWithReleaseAssetsReason,
+				Message: fmt.Sprintf("%s", msg),
+			},
 		)
 		record.Warn(clusterAddon, "ValidateHelmChartFailed", msg)
 		return nil, false, nil
 	}
 
 	// set downloaded condition if able to read metadata file
-	conditions.MarkTrue(clusterAddon, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
+	conditions.Set(clusterAddon, metav1.Condition{Type: string(csov1alpha1.ClusterStackReleaseAssetsReadyCondition), Status: metav1.ConditionTrue, Reason: "AssetsReady", Message: "release assets are ready"})
 
 	return &releaseAsset, false, nil
 }
@@ -1021,42 +1081,46 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 		if _, err := os.Stat(filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
 			oldBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(oldClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
-				conditions.MarkFalse(
-					in.clusterAddon,
-					csov1alpha1.HelmChartTemplatedCondition,
-					csov1alpha1.TemplateOldClusterStackOverwriteFailedReason,
-					clusterv1.ConditionSeverityError,
-					"failed to build template from old cluster addon values: %s", err.Error(),
-				)
+conditions.Set(
+				in.clusterAddon,
+				metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartTemplatedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.TemplateOldClusterStackOverwriteFailedReason),
+					Message: fmt.Sprintf("failed to build template from old cluster addon values: %s", err.Error()),
+				},
+			)
 
-				record.Warnf(
-					in.clusterAddon,
-					csov1alpha1.TemplateOldClusterStackOverwriteFailedReason,
-					"failed to build template from old cluster addon values: %s", err.Error(),
-				)
+			record.Warnf(
+				in.clusterAddon,
+				csov1alpha1.TemplateOldClusterStackOverwriteFailedReason,
+				"failed to build template from old cluster addon values: %s", err.Error(),
+			)
 
-				return true, nil, nil, nil
-			}
-
-			oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate, in.oldKubernetesVersion)
-			if err != nil {
-				conditions.MarkFalse(
-					in.clusterAddon,
-					csov1alpha1.HelmChartTemplatedCondition,
-					csov1alpha1.TemplateOldClusterStackFailedReason,
-					clusterv1.ConditionSeverityError,
-					"failed to template old helm chart: %s", err.Error(),
-				)
-
-				record.Warnf(
-					in.clusterAddon,
-					csov1alpha1.TemplateOldClusterStackFailedReason,
-					"failed to template old helm chart: %s", err.Error(),
-				)
-
-				return true, nil, nil, nil
-			}
+			return true, nil, nil, nil
 		}
+
+		oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate, in.oldKubernetesVersion)
+		if err != nil {
+			conditions.Set(
+				in.clusterAddon,
+				metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartTemplatedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.TemplateOldClusterStackFailedReason),
+					Message: fmt.Sprintf("failed to template old helm chart: %s", err.Error()),
+				},
+			)
+
+			record.Warnf(
+				in.clusterAddon,
+				csov1alpha1.TemplateOldClusterStackFailedReason,
+				"failed to template old helm chart: %s", err.Error(),
+			)
+
+			return true, nil, nil, nil
+		}
+	}
 	}
 
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, name)
@@ -1064,12 +1128,14 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 	if _, err := os.Stat(filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml)); err == nil {
 		newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(newClusterStackSubDirPath, release.OverwriteYaml), in.cluster, r.Client)
 		if err != nil {
-			conditions.MarkFalse(
+			conditions.Set(
 				in.clusterAddon,
-				csov1alpha1.HelmChartTemplatedCondition,
-				csov1alpha1.TemplateNewClusterStackOverwriteFailedReason,
-				clusterv1.ConditionSeverityError,
-				"failed to build template from new cluster addon values: %s", err.Error(),
+				metav1.Condition{
+					Type:    string(csov1alpha1.HelmChartTemplatedCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  string(csov1alpha1.TemplateNewClusterStackOverwriteFailedReason),
+					Message: fmt.Sprintf("failed to build template from new cluster addon values: %s", err.Error()),
+				},
 			)
 
 			record.Eventf(
@@ -1084,12 +1150,14 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 
 	newHelmTemplate, err = helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate, in.kubernetesVersion)
 	if err != nil {
-		conditions.MarkFalse(
+		conditions.Set(
 			in.clusterAddon,
-			csov1alpha1.HelmChartTemplatedCondition,
-			csov1alpha1.TemplateNewClusterStackFailedReason,
-			clusterv1.ConditionSeverityError,
-			"failed to template new helm chart: %s", err.Error(),
+			metav1.Condition{
+				Type:    string(csov1alpha1.HelmChartTemplatedCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(csov1alpha1.TemplateNewClusterStackFailedReason),
+				Message: fmt.Sprintf("failed to template new helm chart: %s", err.Error()),
+			},
 		)
 
 		record.Eventf(
@@ -1206,12 +1274,22 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 		},
 	}
 
-	if cluster.Spec.ControlPlaneRef != nil {
-		references["ControlPlane"] = *cluster.Spec.ControlPlaneRef
+	if cluster.Spec.ControlPlaneRef.IsDefined() {
+		references["ControlPlane"] = corev1.ObjectReference{
+			Kind:       cluster.Spec.ControlPlaneRef.Kind,
+			Name:       cluster.Spec.ControlPlaneRef.Name,
+			Namespace:  cluster.Namespace,
+			APIVersion: cluster.Spec.ControlPlaneRef.APIGroup + "/v1beta1",
+		}
 	}
 
-	if cluster.Spec.InfrastructureRef != nil {
-		references["InfraCluster"] = *cluster.Spec.InfrastructureRef
+	if cluster.Spec.InfrastructureRef.IsDefined() {
+		references["InfraCluster"] = corev1.ObjectReference{
+			Kind:       cluster.Spec.InfrastructureRef.Kind,
+			Name:       cluster.Spec.InfrastructureRef.Name,
+			Namespace:  cluster.Namespace,
+			APIVersion: cluster.Spec.InfrastructureRef.APIGroup + "/v1beta1",
+		}
 	}
 
 	valueLookUp, err := initializeBuiltins(ctx, c, references, cluster)
@@ -1281,7 +1359,7 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 
 	for name, ref := range referenceMap {
 		objectRef := referenceMap[name]
-		obj, err := external.Get(ctx, c, &objectRef, cluster.Namespace)
+		obj, err := external.Get(ctx, c, &objectRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object %s: %w", ref.Name, err)
 		}
@@ -1297,7 +1375,7 @@ func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 	blder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterAddon{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue))
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(mgr.GetScheme(), logger, r.WatchFilterValue))
 
 	// check also for updates in cluster objects
 	return blder.WatchesRawSource(
@@ -1308,8 +1386,7 @@ func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 				UpdateFunc: func(e event.TypedUpdateEvent[*clusterv1.Cluster]) bool {
 					oldCluster := e.ObjectOld
 					newCluster := e.ObjectNew
-					if oldCluster.Spec.Topology != nil && newCluster.Spec.Topology != nil &&
-						oldCluster.Spec.Topology.Class != newCluster.Spec.Topology.Class {
+					if oldCluster.Spec.Topology.ClassRef.Name != newCluster.Spec.Topology.ClassRef.Name {
 						return true
 					}
 					return false

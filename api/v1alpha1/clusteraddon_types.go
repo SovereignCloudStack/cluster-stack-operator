@@ -20,7 +20,6 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusteraddon"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 const (
@@ -110,7 +109,7 @@ type ClusterAddonStatus struct {
 
 	// Conditions define the current service state of the ClusterAddon.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -175,12 +174,12 @@ func (r *ClusterAddon) HasStageAnnotation(value StageAnnotationValue) bool {
 }
 
 // GetConditions returns the observations of the operational state of the ClusterAddon resource.
-func (r *ClusterAddon) GetConditions() clusterv1.Conditions {
+func (r *ClusterAddon) GetConditions() []metav1.Condition {
 	return r.Status.Conditions
 }
 
-// SetConditions sets the underlying service state of the ClusterAddon to the predescribed clusterv1.Conditions.
-func (r *ClusterAddon) SetConditions(conditions clusterv1.Conditions) {
+// SetConditions sets the underlying service state of the ClusterAddon to the predescribed conditions.
+func (r *ClusterAddon) SetConditions(conditions []metav1.Condition) {
 	r.Status.Conditions = conditions
 }
 

@@ -34,9 +34,10 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/kube"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/release"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -49,6 +50,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"k8s.io/utils/ptr"
 )
 
 // ClusterStackReleaseReconciler reconciles a ClusterStackRelease object.
@@ -87,15 +89,15 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 	}
 
 	defer func() {
-		conditions.SetSummary(clusterStackRelease)
-
 		// Check if the object has a deletion timestamp and release assets have not been downloaded properly.
 		// In that case, the controller cannot perform a proper reconcileDelete and we just remove the finalizer.
 		if !clusterStackRelease.DeletionTimestamp.IsZero() &&
-			conditions.IsFalse(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition) {
+			conditions.Get(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition) != nil &&
+			conditions.Get(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition).Status == metav1.ConditionFalse {
 			controllerutil.RemoveFinalizer(clusterStackRelease, csov1alpha1.ClusterStackReleaseFinalizer)
 		}
 
+		ensureConditionReasons(&clusterStackRelease.Status.Conditions)
 		if err := patchHelper.Patch(ctx, clusterStackRelease); err != nil {
 			reterr = fmt.Errorf("failed to patch ClusterStackRelease: %w", err)
 		}
@@ -108,16 +110,23 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 
 	releaseAssets, download, err := release.New(releaseTag, r.ReleaseDirectory)
 	if err != nil {
-		conditions.MarkFalse(clusterStackRelease,
-			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
-			csov1alpha1.IssueWithReleaseAssetsReason,
-			clusterv1.ConditionSeverityError, "%s", err.Error())
+		conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.IssueWithReleaseAssetsReason,
+			Message: err.Error(),
+		})
 		return reconcile.Result{RequeueAfter: 1 * time.Minute}, fmt.Errorf("failed to create release: %w", err)
 	}
 
 	// if download is true, it means that the release assets have not been downloaded yet
 	if download {
-		conditions.MarkFalse(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition, csov1alpha1.ReleaseAssetsNotDownloadedYetReason, clusterv1.ConditionSeverityInfo, "assets not downloaded yet")
+		conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.ReleaseAssetsNotDownloadedYetReason,
+			Message: "assets not downloaded yet",
+		})
 
 		// this is the point where we download the release
 		// acquire lock so that only one reconcile loop can download the release
@@ -126,13 +135,14 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 
 		ac, err := r.AssetsClientFactory.NewClient(ctx)
 		if err != nil {
-			isSet := conditions.IsFalse(clusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
-			conditions.MarkFalse(clusterStackRelease,
-				csov1alpha1.AssetsClientAPIAvailableCondition,
-				csov1alpha1.FailedCreateAssetsClientReason,
-				clusterv1.ConditionSeverityError,
-				"%s", err.Error(),
-			)
+			isSet := conditions.Get(clusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition) != nil &&
+			conditions.Get(clusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition).Status == metav1.ConditionFalse
+			conditions.Set(clusterStackRelease, metav1.Condition{
+				Type:    csov1alpha1.AssetsClientAPIAvailableCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  csov1alpha1.FailedCreateAssetsClientReason,
+				Message: err.Error(),
+			})
 			record.Warn(clusterStackRelease, "FailedCreateAssetsClient", err.Error())
 
 			// give the assets client a second change
@@ -142,7 +152,12 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 			return reconcile.Result{}, nil
 		}
 
-		conditions.MarkTrue(clusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
+		conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.AssetsClientAPIAvailableCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AssetsClientAvailable",
+			Message: "assets client API is available",
+		})
 
 		if err := downloadReleaseAssets(ctx, releaseTag, releaseAssets.LocalDownloadPath, ac); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to download release assets: %w", err)
@@ -155,18 +170,25 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 	// Check for helm charts in the release assets. If they are not present, then something went wrong.
 	if err := releaseAssets.CheckHelmCharts(); err != nil {
 		msg := fmt.Sprintf("failed to validate helm charts: %s", err.Error())
-		conditions.MarkFalse(
+		conditions.Set(
 			clusterStackRelease,
-			csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
-			csov1alpha1.IssueWithReleaseAssetsReason,
-			clusterv1.ConditionSeverityError,
-			"%s", msg,
+			metav1.Condition{
+				Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  csov1alpha1.IssueWithReleaseAssetsReason,
+				Message: fmt.Sprintf("%s", msg),
+			},
 		)
 		record.Warn(clusterStackRelease, "ValidateHelmChartFailed", msg)
 		return reconcile.Result{}, nil
 	}
 
-	conditions.MarkTrue(clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
+	conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleaseAssetsReadyCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AssetsReady",
+			Message: "release assets are ready",
+		})
 
 	kubeClient := r.KubeClientFactory.NewClient(req.Namespace, r.RESTConfig)
 
@@ -188,10 +210,16 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 		}
 	}
 
-	conditions.MarkTrue(clusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition)
+	conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.ProviderClusterStackReleaseReadyCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ProviderClusterStackReleaseReady",
+			Message: "provider ClusterStackRelease is ready",
+		})
 
 	// if objects have been applied already, we don't have to do anything
-	if conditions.IsTrue(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition) {
+	if conditions.Get(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition) != nil &&
+		conditions.Get(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition).Status == metav1.ConditionTrue {
 		return reconcile.Result{}, nil
 	}
 
@@ -201,11 +229,21 @@ func (r *ClusterStackReleaseReconciler) Reconcile(ctx context.Context, req recon
 	}
 
 	if shouldRequeue {
-		conditions.MarkFalse(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.ObjectsApplyingOngoingReason, clusterv1.ConditionSeverityWarning, "failed to successfully apply everything")
+		conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.HelmChartAppliedCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.ObjectsApplyingOngoingReason,
+			Message: "failed to successfully apply everything",
+		})
 		return reconcile.Result{RequeueAfter: 20 * time.Second}, nil
 	}
 
-	conditions.MarkTrue(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
+	conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.HelmChartAppliedCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "HelmChartApplied",
+			Message: "Helm chart has been applied successfully",
+		})
 	clusterStackRelease.Status.Ready = true
 
 	return reconcile.Result{}, nil
@@ -255,7 +293,21 @@ func downloadReleaseAssets(ctx context.Context, releaseTag, downloadPath string,
 
 func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx context.Context, clusterStackRelease *csov1alpha1.ClusterStackRelease) (bool, error) {
 	// fetch providerClusterStackReleaseObject to update that object accordingly and get information from it
-	providerClusterStackRelease, err := external.Get(ctx, r.Client, clusterStackRelease.Spec.ProviderRef, clusterStackRelease.Namespace)
+	// Convert ObjectReference to ContractVersionedObjectReference
+	apiGroup := ""
+	if clusterStackRelease.Spec.ProviderRef != nil && clusterStackRelease.Spec.ProviderRef.APIVersion != "" {
+		if idx := strings.LastIndex(clusterStackRelease.Spec.ProviderRef.APIVersion, "/"); idx != -1 {
+			apiGroup = clusterStackRelease.Spec.ProviderRef.APIVersion[:idx]
+		} else {
+			apiGroup = clusterStackRelease.Spec.ProviderRef.APIVersion
+		}
+	}
+	providerRef := clusterv1.ContractVersionedObjectReference{
+		Kind:     clusterStackRelease.Spec.ProviderRef.Kind,
+		Name:     clusterStackRelease.Spec.ProviderRef.Name,
+		APIGroup: apiGroup,
+	}
+	providerClusterStackRelease, err := external.GetObjectFromContractVersionedRef(ctx, r.Client, providerRef, clusterStackRelease.Namespace)
 	if err != nil {
 		return false, fmt.Errorf("failed to get ProviderClusterStackRelease object: %w", err)
 	}
@@ -286,11 +338,12 @@ func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx co
 	}
 
 	if !ready {
-		conditions.MarkFalse(clusterStackRelease,
-			csov1alpha1.ProviderClusterStackReleaseReadyCondition,
-			csov1alpha1.ProcessOngoingReason, clusterv1.ConditionSeverityInfo,
-			"providerClusterStackRelease not ready yet",
-		)
+		conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.ProviderClusterStackReleaseReadyCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.ProcessOngoingReason,
+			Message: "providerClusterStackRelease not ready yet",
+		})
 	}
 	return ready, nil
 }
@@ -308,7 +361,12 @@ func (r *ClusterStackReleaseReconciler) templateAndApply(ctx context.Context, re
 
 	newResources, shouldRequeue, err := kubeClient.Apply(ctx, template, clusterStackRelease.Status.Resources)
 	if err != nil {
-		conditions.MarkFalse(clusterStackRelease, csov1alpha1.HelmChartAppliedCondition, csov1alpha1.FailedToApplyObjectsReason, clusterv1.ConditionSeverityError, "failed to apply")
+		conditions.Set(clusterStackRelease, metav1.Condition{
+			Type:    csov1alpha1.HelmChartAppliedCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  csov1alpha1.FailedToApplyObjectsReason,
+			Message: "failed to apply",
+		})
 		return false, fmt.Errorf("failed to apply cluster class helm chart: %w", err)
 	}
 
@@ -359,15 +417,17 @@ func (r *ClusterStackReleaseReconciler) SetupWithManager(ctx context.Context, mg
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterStackRelease{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log.FromContext(ctx), r.WatchFilterValue)).
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(mgr.GetScheme(), log.FromContext(ctx), r.WatchFilterValue)).
 		Build(r)
 	if err != nil {
 		return fmt.Errorf("failed to set up with a controller manager: %w", err)
 	}
 
 	r.externalTracker = external.ObjectTracker{
-		Controller: c,
-		Cache:      mgr.GetCache(),
+		Controller:       c,
+		Cache:            mgr.GetCache(),
+		Scheme:           mgr.GetScheme(),
+		PredicateLogger:  ptr.To(log.FromContext(ctx)),
 	}
 	return nil
 }

@@ -25,7 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -102,7 +102,7 @@ func (r *ClusterAddonCreateReconciler) SetupWithManager(ctx context.Context, mgr
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&clusterv1.Cluster{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log.FromContext(ctx), r.WatchFilterValue)).
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(mgr.GetScheme(), log.FromContext(ctx), r.WatchFilterValue)).
 		WithEventFilter(predicate.Funcs{
 			// We're only interested in the create events for a cluster object
 			DeleteFunc: func(_ event.DeleteEvent) bool {

@@ -30,7 +30,6 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,16 +37,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	k8sversion "k8s.io/apimachinery/pkg/version"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/annotations"
-	"sigs.k8s.io/cluster-api/util/contract"
 	"sigs.k8s.io/cluster-api/util/labels/format"
 )
 
@@ -132,7 +131,7 @@ func GetMachineIfExists(ctx context.Context, c client.Client, namespace, name st
 
 // IsControlPlaneMachine checks machine is a control plane node.
 func IsControlPlaneMachine(machine *clusterv1.Machine) bool {
-	_, ok := machine.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabel]
+	_, ok := machine.Labels[clusterv1.MachineControlPlaneLabel]
 	return ok
 }
 
@@ -181,7 +180,7 @@ func GetClusterByName(ctx context.Context, c client.Client, namespace, name stri
 	}
 
 	if err := c.Get(ctx, key, cluster); err != nil {
-		return nil, errors.Wrapf(err, "failed to get Cluster/%s", name)
+		return nil, errors.Wrapf(err, "failed to get Cluster %s", klog.KRef(namespace, name))
 	}
 
 	return cluster, nil
@@ -206,12 +205,12 @@ func ClusterToInfrastructureMapFunc(ctx context.Context, gvk schema.GroupVersion
 		}
 
 		// Return early if the InfrastructureRef is nil.
-		if cluster.Spec.InfrastructureRef == nil {
+		if !cluster.Spec.InfrastructureRef.IsDefined() {
 			return nil
 		}
 		gk := gvk.GroupKind()
 		// Return early if the GroupKind doesn't match what we expect.
-		infraGK := cluster.Spec.InfrastructureRef.GroupVersionKind().GroupKind()
+		infraGK := cluster.Spec.InfrastructureRef.GroupKind()
 		if gk != infraGK {
 			return nil
 		}
@@ -219,7 +218,7 @@ func ClusterToInfrastructureMapFunc(ctx context.Context, gvk schema.GroupVersion
 		key := types.NamespacedName{Namespace: cluster.Namespace, Name: cluster.Spec.InfrastructureRef.Name}
 
 		if err := c.Get(ctx, key, providerCluster); err != nil {
-			log.V(4).Error(err, fmt.Sprintf("Failed to get %T", providerCluster))
+			log.V(4).Info(fmt.Sprintf("Failed to get %T", providerCluster), "err", err)
 			return nil
 		}
 
@@ -274,7 +273,7 @@ func MachineToInfrastructureMapFunc(gvk schema.GroupVersionKind) handler.MapFunc
 
 		gk := gvk.GroupKind()
 		// Return early if the GroupKind doesn't match what we expect.
-		infraGK := m.Spec.InfrastructureRef.GroupVersionKind().GroupKind()
+		infraGK := m.Spec.InfrastructureRef.GroupKind()
 		if gk != infraGK {
 			return nil
 		}
@@ -334,6 +333,21 @@ func RemoveOwnerRef(ownerReferences []metav1.OwnerReference, inputRef metav1.Own
 	return ownerReferences
 }
 
+// HasExactOwnerRef returns true if the exact OwnerReference is already in the slice.
+// It matches based on APIVersion, Kind, Name and Controller.
+func HasExactOwnerRef(ownerReferences []metav1.OwnerReference, ref metav1.OwnerReference) bool {
+	for _, r := range ownerReferences {
+		if r.APIVersion == ref.APIVersion &&
+			r.Kind == ref.Kind &&
+			r.Name == ref.Name &&
+			r.UID == ref.UID &&
+			ptr.Deref(r.Controller, false) == ptr.Deref(ref.Controller, false) {
+			return true
+		}
+	}
+	return false
+}
+
 // indexOwnerRef returns the index of the owner reference in the slice if found, or -1.
 func indexOwnerRef(ownerReferences []metav1.OwnerReference, ref metav1.OwnerReference) int {
 	for index, r := range ownerReferences {
@@ -346,9 +360,9 @@ func indexOwnerRef(ownerReferences []metav1.OwnerReference, ref metav1.OwnerRefe
 
 // IsOwnedByObject returns true if any of the owner references point to the given target.
 // It matches the object based on the Group, Kind and Name.
-func IsOwnedByObject(obj metav1.Object, target client.Object) bool {
+func IsOwnedByObject(obj metav1.Object, target client.Object, targetGK schema.GroupKind) bool {
 	for _, ref := range obj.GetOwnerReferences() {
-		if refersTo(&ref, target) {
+		if refersTo(&ref, target, targetGK) {
 			return true
 		}
 	}
@@ -356,12 +370,12 @@ func IsOwnedByObject(obj metav1.Object, target client.Object) bool {
 }
 
 // IsControlledBy differs from metav1.IsControlledBy. This function matches on Group, Kind and Name. The metav1.IsControlledBy function matches on UID only.
-func IsControlledBy(obj metav1.Object, owner client.Object) bool {
+func IsControlledBy(obj metav1.Object, owner client.Object, ownerGK schema.GroupKind) bool {
 	controllerRef := metav1.GetControllerOfNoCopy(obj)
 	if controllerRef == nil {
 		return false
 	}
-	return refersTo(controllerRef, owner)
+	return refersTo(controllerRef, owner, ownerGK)
 }
 
 // Returns true if a and b point to the same object based on Group, Kind and Name.
@@ -380,14 +394,13 @@ func referSameObject(a, b metav1.OwnerReference) bool {
 }
 
 // Returns true if ref refers to obj based on Group, Kind and Name.
-func refersTo(ref *metav1.OwnerReference, obj client.Object) bool {
+func refersTo(ref *metav1.OwnerReference, obj client.Object, objGK schema.GroupKind) bool {
 	refGv, err := schema.ParseGroupVersion(ref.APIVersion)
 	if err != nil {
 		return false
 	}
 
-	gvk := obj.GetObjectKind().GroupVersionKind()
-	return refGv.Group == gvk.Group && ref.Kind == gvk.Kind && ref.Name == obj.GetName()
+	return refGv.Group == objGK.Group && ref.Kind == objGK.Kind && ref.Name == obj.GetName()
 }
 
 // UnstructuredUnmarshalField is a wrapper around json and unstructured objects to decode and copy a specific field
@@ -440,33 +453,6 @@ func HasOwner(refList []metav1.OwnerReference, apiVersion string, kinds []string
 	return false
 }
 
-// GetGVKMetadata retrieves a CustomResourceDefinition metadata from the API server using partial object metadata.
-//
-// This function is greatly more efficient than GetCRDWithContract and should be preferred in most cases.
-func GetGVKMetadata(ctx context.Context, c client.Client, gvk schema.GroupVersionKind) (*metav1.PartialObjectMetadata, error) {
-	meta := &metav1.PartialObjectMetadata{}
-	meta.SetName(contract.CalculateCRDName(gvk.Group, gvk.Kind))
-	meta.SetGroupVersionKind(apiextensionsv1.SchemeGroupVersion.WithKind("CustomResourceDefinition"))
-	if err := c.Get(ctx, client.ObjectKeyFromObject(meta), meta); err != nil {
-		return meta, errors.Wrap(err, "failed to retrieve metadata from GVK resource")
-	}
-	return meta, nil
-}
-
-// KubeAwareAPIVersions is a sortable slice of kube-like version strings.
-//
-// Kube-like version strings are starting with a v, followed by a major version,
-// optional "alpha" or "beta" strings followed by a minor version (e.g. v1, v2beta1).
-// Versions will be sorted based on GA/alpha/beta first and then major and minor
-// versions. e.g. v2, v1, v1beta2, v1beta1, v1alpha1.
-type KubeAwareAPIVersions []string
-
-func (k KubeAwareAPIVersions) Len() int      { return len(k) }
-func (k KubeAwareAPIVersions) Swap(i, j int) { k[i], k[j] = k[j], k[i] }
-func (k KubeAwareAPIVersions) Less(i, j int) bool {
-	return k8sversion.CompareKubeAwareVersionStrings(k[i], k[j]) < 0
-}
-
 // ClusterToTypedObjectsMapper returns a mapper function that gets a cluster and lists all objects for the object passed in
 // and returns a list of requests.
 // Note: This function uses the passed in typed ObjectList and thus with the default client configuration all list calls
@@ -510,7 +496,10 @@ func ClusterToTypedObjectsMapper(c client.Client, ro client.ObjectList, scheme *
 			listOpts = append(listOpts, client.InNamespace(cluster.Namespace))
 		}
 
-		objectList = objectList.DeepCopyObject().(client.ObjectList)
+		// Note: We have to DeepCopy objectList into a new variable. Otherwise
+		// we have a race condition between DeepCopyObject and client.List if this
+		// mapper func is called concurrently.
+		objectList := objectList.DeepCopyObject().(client.ObjectList)
 		if err := c.List(ctx, objectList, listOpts...); err != nil {
 			return nil
 		}
@@ -701,6 +690,8 @@ func IsSupportedVersionSkew(a, b semver.Version) bool {
 
 // LowestNonZeroResult compares two reconciliation results
 // and returns the one with lowest requeue time.
+//
+//nolint:staticcheck // SA1019: Requeue is deprecated.
 func LowestNonZeroResult(i, j ctrl.Result) ctrl.Result {
 	switch {
 	case i.IsZero():
@@ -761,4 +752,90 @@ func MergeMap(maps ...map[string]string) map[string]string {
 		return nil
 	}
 	return m
+}
+
+// GetOwnerMachinePool returns the MachinePool objects owning the current resource.
+func GetOwnerMachinePool(ctx context.Context, c client.Client, obj metav1.ObjectMeta) (*clusterv1.MachinePool, error) {
+	for _, ref := range obj.GetOwnerReferences() {
+		if ref.Kind != "MachinePool" {
+			continue
+		}
+		gv, err := schema.ParseGroupVersion(ref.APIVersion)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if gv.Group == clusterv1.GroupVersion.Group {
+			return GetMachinePoolByName(ctx, c, obj.Namespace, ref.Name)
+		}
+	}
+	return nil, nil
+}
+
+// GetMachinePoolByName finds and returns a MachinePool object using the specified params.
+func GetMachinePoolByName(ctx context.Context, c client.Client, namespace, name string) (*clusterv1.MachinePool, error) {
+	m := &clusterv1.MachinePool{}
+	key := client.ObjectKey{Name: name, Namespace: namespace}
+	if err := c.Get(ctx, key, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// GetMachinePoolByLabels finds and returns a MachinePool object using the value of clusterv1.MachinePoolNameLabel.
+// This differs from GetMachinePoolByName as the label value can be a hash.
+func GetMachinePoolByLabels(ctx context.Context, c client.Client, namespace string, labels map[string]string) (*clusterv1.MachinePool, error) {
+	selector := map[string]string{}
+	if clusterName, ok := labels[clusterv1.ClusterNameLabel]; ok {
+		selector = map[string]string{clusterv1.ClusterNameLabel: clusterName}
+	}
+
+	if poolNameHash, ok := labels[clusterv1.MachinePoolNameLabel]; ok {
+		machinePoolList := &clusterv1.MachinePoolList{}
+		if err := c.List(ctx, machinePoolList, client.InNamespace(namespace), client.MatchingLabels(selector)); err != nil {
+			return nil, errors.Wrapf(err, "failed to list MachinePools using labels %v", selector)
+		}
+
+		for _, mp := range machinePoolList.Items {
+			if format.MustFormatValue(mp.Name) == poolNameHash {
+				return &mp, nil
+			}
+		}
+	} else {
+		return nil, errors.Errorf("labels missing required key `%s`", clusterv1.MachinePoolNameLabel)
+	}
+
+	return nil, nil
+}
+
+// MachinePoolToInfrastructureMapFunc returns a handler.MapFunc that watches for
+// MachinePool events and returns reconciliation requests for an infrastructure provider object.
+func MachinePoolToInfrastructureMapFunc(ctx context.Context, gvk schema.GroupVersionKind) handler.MapFunc {
+	log := ctrl.LoggerFrom(ctx)
+	return func(_ context.Context, o client.Object) []reconcile.Request {
+		m, ok := o.(*clusterv1.MachinePool)
+		if !ok {
+			log.V(4).Info("Not a machine pool", "Object", klog.KObj(o))
+			return nil
+		}
+		log := log.WithValues("MachinePool", klog.KObj(o))
+
+		gk := gvk.GroupKind()
+		ref := m.Spec.Template.Spec.InfrastructureRef
+		// Return early if the GroupKind doesn't match what we expect.
+		infraGK := ref.GroupKind()
+		if gk != infraGK {
+			log.V(4).Info("Infra kind doesn't match filter group kind", "infrastructureGroupKind", infraGK.String())
+			return nil
+		}
+
+		log.V(4).Info("Projecting object")
+		return []reconcile.Request{
+			{
+				NamespacedName: client.ObjectKey{
+					Namespace: m.Namespace,
+					Name:      ref.Name,
+				},
+			},
+		}
+	}
 }

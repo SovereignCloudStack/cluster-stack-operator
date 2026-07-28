@@ -26,7 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 var _ = Describe("ClusterAddonCreateReconciler", func() {
@@ -51,8 +51,10 @@ var _ = Describe("ClusterAddonCreateReconciler", func() {
 				Finalizers: []string{clusterv1.ClusterFinalizer},
 			},
 			Spec: clusterv1.ClusterSpec{
-				Topology: &clusterv1.Topology{
-					Class:   testClusterStackName,
+				Topology: clusterv1.Topology{
+					ClassRef: clusterv1.ClusterClassRef{
+						Name: testClusterStackName,
+					},
 					Version: testKubernetesVersion,
 				},
 			},

@@ -23,9 +23,10 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	runtimehooksv1 "sigs.k8s.io/cluster-api/exp/runtime/hooks/api/v1alpha1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -77,7 +78,7 @@ func (e *Handler) DoBeforeClusterUpgrade(ctx context.Context, request *runtimeho
 		}
 
 		clusterAddon.Spec.Hook = BeforeClusterUpgradeHook
-		conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+		conditions.Delete(clusterAddon, string(csov1alpha1.HelmChartAppliedCondition))
 
 		if err := patchHelper.Patch(ctx, clusterAddon); err != nil {
 			log.Error(err, "failed to patch cluster addon")
@@ -89,7 +90,7 @@ func (e *Handler) DoBeforeClusterUpgrade(ctx context.Context, request *runtimeho
 	}
 
 	// check if hook is completed
-	if !conditions.IsTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition) {
+	if conditions.Get(clusterAddon, string(csov1alpha1.HelmChartAppliedCondition)) == nil || conditions.Get(clusterAddon, string(csov1alpha1.HelmChartAppliedCondition)).Status != metav1.ConditionTrue {
 		response.SetRetryAfterSeconds(10)
 	}
 
@@ -128,7 +129,7 @@ func (e *Handler) DoAfterControlPlaneInitialized(ctx context.Context, request *r
 		}
 
 		clusterAddon.Spec.Hook = "AfterControlPlaneInitialized"
-		conditions.Delete(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+		conditions.Delete(clusterAddon, string(csov1alpha1.HelmChartAppliedCondition))
 
 		if err := patchHelper.Patch(ctx, clusterAddon, patch.WithForceOverwriteConditions{}); err != nil {
 			log.Error(err, "failed to patch cluster addon")

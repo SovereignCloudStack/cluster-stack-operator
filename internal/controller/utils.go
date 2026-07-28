@@ -20,9 +20,20 @@ import (
 	"context"
 	"fmt"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// ensureConditionReasons ensures all conditions have a non-empty Reason.
+// CAPI v1.12.2+ requires Reason to be at least 1 char (minLength:1 in CRD).
+func ensureConditionReasons(conditions *[]metav1.Condition) {
+	for i := range *conditions {
+		if (*conditions)[i].Reason == "" {
+			(*conditions)[i].Reason = (*conditions)[i].Type + "Reason"
+		}
+	}
+}
 
 func getUsedClusterClasses(ctx context.Context, c client.Client, namespace string) ([]string, error) {
 	clusterList := &clusterv1.ClusterList{}
@@ -35,11 +46,8 @@ func getUsedClusterClasses(ctx context.Context, c client.Client, namespace strin
 	// list the names of all ClusterClasses that are referenced in Cluster objects
 	for i := range clusterList.Items {
 		cluster := clusterList.Items[i]
-		if cluster.Spec.Topology == nil {
-			continue
-		}
-		if cluster.Spec.Topology.Class != "" {
-			usedClusterClasses = append(usedClusterClasses, cluster.Spec.Topology.Class)
+		if cluster.Spec.Topology.ClassRef.Name != "" {
+			usedClusterClasses = append(usedClusterClasses, cluster.Spec.Topology.ClassRef.Name)
 		}
 	}
 

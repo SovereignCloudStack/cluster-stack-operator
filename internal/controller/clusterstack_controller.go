@@ -37,7 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -89,8 +89,7 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	}
 
 	defer func() {
-		conditions.SetSummary(clusterStack)
-
+		ensureConditionReasons(&clusterStack.Status.Conditions)
 		if err := patchHelper.Patch(ctx, clusterStack); err != nil {
 			reterr = fmt.Errorf("failed to patch clusterstack: %w", err)
 		}
@@ -116,13 +115,14 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	if clusterStack.Spec.AutoSubscribe {
 		ac, err := r.AssetsClientFactory.NewClient(ctx)
 		if err != nil {
-			isSet := conditions.IsFalse(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition)
-			conditions.MarkFalse(clusterStack,
-				csov1alpha1.AssetsClientAPIAvailableCondition,
-				csov1alpha1.FailedCreateAssetsClientReason,
-				clusterv1.ConditionSeverityError,
-				"%s", err.Error(),
-			)
+			isSet := conditions.Get(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition) != nil &&
+			conditions.Get(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition).Status == metav1.ConditionFalse
+			conditions.Set(clusterStack, metav1.Condition{
+				Type:    csov1alpha1.AssetsClientAPIAvailableCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  csov1alpha1.FailedCreateAssetsClientReason,
+				Message: err.Error(),
+			})
 			record.Warn(clusterStack, "FailedCreateAssetsClient", err.Error())
 
 			// give the assets client a second change
@@ -132,21 +132,31 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			return reconcile.Result{}, nil
 		}
 
-		conditions.MarkTrue(clusterStack, csov1alpha1.AssetsClientAPIAvailableCondition)
+		conditions.Set(clusterStack, metav1.Condition{
+			Type:    csov1alpha1.AssetsClientAPIAvailableCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AssetsClientAvailable",
+			Message: "assets client API is available",
+		})
 
 		latest, err = getLatestReleaseFromRemoteRepository(ctx, clusterStack, ac)
 		if err != nil {
 			// only log error and mark condition as false, but continue
-			conditions.MarkFalse(clusterStack,
-				csov1alpha1.ReleasesSyncedCondition,
-				csov1alpha1.FailedToSyncReason,
-				clusterv1.ConditionSeverityWarning,
-				"%s", err.Error(),
-			)
+			conditions.Set(clusterStack, metav1.Condition{
+				Type:    csov1alpha1.ReleasesSyncedCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  csov1alpha1.FailedToSyncReason,
+				Message: err.Error(),
+			})
 			logger.Error(err, "failed to get latest release from remote repository")
 		}
 
-		conditions.MarkTrue(clusterStack, csov1alpha1.ReleasesSyncedCondition)
+		conditions.Set(clusterStack, metav1.Condition{
+			Type:    csov1alpha1.ReleasesSyncedCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ReleasesSynced",
+			Message: "releases are synced",
+		})
 	}
 
 	inUse, err := r.getClusterStackReleasesInUse(ctx, req.Namespace)
@@ -188,46 +198,61 @@ func (r *ClusterStackReconciler) Reconcile(ctx context.Context, req reconcile.Re
 			if err != nil {
 				// set appropriate condition
 				if apierrors.IsNotFound(err) {
-					conditions.MarkFalse(clusterStack,
-						csov1alpha1.ProviderClusterStackReleasesSyncedCondition,
-						csov1alpha1.ProviderTemplateNotFoundReason,
-						clusterv1.ConditionSeverityError,
-						"provider template could not be found - check provider reference of cluster stack",
-					)
+					conditions.Set(clusterStack, metav1.Condition{
+					Type:    csov1alpha1.ProviderClusterStackReleasesSyncedCondition,
+					Status:  metav1.ConditionFalse,
+					Reason:  csov1alpha1.ProviderTemplateNotFoundReason,
+					Message: "provider template could not be found - check provider reference of cluster stack",
+				})
 				} else {
-					conditions.MarkFalse(clusterStack,
-						csov1alpha1.ProviderClusterStackReleasesSyncedCondition,
-						csov1alpha1.FailedToCreateOrUpdateReason,
-						clusterv1.ConditionSeverityWarning,
-						"%s", err.Error(),
-					)
+					conditions.Set(clusterStack, metav1.Condition{
+					Type:    csov1alpha1.ProviderClusterStackReleasesSyncedCondition,
+					Status:  metav1.ConditionFalse,
+					Reason:  csov1alpha1.FailedToCreateOrUpdateReason,
+					Message: err.Error(),
+				})
 				}
 				return reconcile.Result{}, fmt.Errorf("failed to create or update provider specific ClusterStackRelease %s/%s: %w", req.Namespace, csr.Name, err)
 			}
 		}
 
 		if err := r.getOrCreateClusterStackRelease(ctx, csr.Name, req.Namespace, ownerRef, providerRef); err != nil {
-			conditions.MarkFalse(clusterStack,
-				csov1alpha1.ClusterStackReleasesSyncedCondition,
-				csov1alpha1.FailedToCreateOrUpdateReason,
-				clusterv1.ConditionSeverityWarning,
-				"%s", err.Error(),
-			)
+			conditions.Set(clusterStack, metav1.Condition{
+				Type:    csov1alpha1.ClusterStackReleasesSyncedCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  csov1alpha1.FailedToCreateOrUpdateReason,
+				Message: err.Error(),
+			})
 			return reconcile.Result{}, fmt.Errorf("failed to get or create ClusterStackRelease %s/%s: %w", req.Namespace, csr.Name, err)
 		}
 	}
 
-	conditions.MarkTrue(clusterStack, csov1alpha1.ClusterStackReleasesSyncedCondition)
+	conditions.Set(clusterStack, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleasesSyncedCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ClusterStackReleasesSynced",
+			Message: "cluster stack releases are synced",
+		})
 
 	if !clusterStack.Spec.NoProvider {
-		conditions.MarkTrue(clusterStack, csov1alpha1.ProviderClusterStackReleasesSyncedCondition)
+		conditions.Set(clusterStack, metav1.Condition{
+			Type:    csov1alpha1.ProviderClusterStackReleasesSyncedCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ProviderClusterStackReleasesSynced",
+			Message: "provider cluster stack releases are synced",
+		})
 	}
 
 	clusterStack.Status.Summary = summary
 
 	if latestReady != nil {
 		clusterStack.Status.LatestRelease = fmt.Sprintf("%s | %s", *latestReady, k8sVersionOfLatest)
-		conditions.MarkTrue(clusterStack, csov1alpha1.ClusterStackReleaseAvailableCondition)
+		conditions.Set(clusterStack, metav1.Condition{
+			Type:    csov1alpha1.ClusterStackReleaseAvailableCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ClusterStackReleaseAvailable",
+			Message: "a cluster stack release is available",
+		})
 	}
 
 	usableVersions, err := getUsableClusterStackReleaseVersions(existingClusterStackReleases)
@@ -279,7 +304,21 @@ func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Cont
 
 func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx context.Context, name string, clusterStack *csov1alpha1.ClusterStack) (*corev1.ObjectReference, error) {
 	// get template object where the object is based on
-	from, err := external.Get(ctx, r.Client, clusterStack.Spec.ProviderRef, clusterStack.Namespace)
+	// Convert ObjectReference to ContractVersionedObjectReference
+	apiGroup := ""
+	if clusterStack.Spec.ProviderRef != nil && clusterStack.Spec.ProviderRef.APIVersion != "" {
+		if idx := strings.LastIndex(clusterStack.Spec.ProviderRef.APIVersion, "/"); idx != -1 {
+			apiGroup = clusterStack.Spec.ProviderRef.APIVersion[:idx]
+		} else {
+			apiGroup = clusterStack.Spec.ProviderRef.APIVersion
+		}
+	}
+	providerRef := clusterv1.ContractVersionedObjectReference{
+		Kind:     clusterStack.Spec.ProviderRef.Kind,
+		Name:     clusterStack.Spec.ProviderRef.Name,
+		APIGroup: apiGroup,
+	}
+	from, err := external.GetObjectFromContractVersionedRef(ctx, r.Client, providerRef, clusterStack.Namespace)
 	if err != nil {
 		return nil, fmt.Errorf("ProviderClusterStackReleaseTemplate %q for kind %q not found: %w", clusterStack.Spec.ProviderRef.Name, clusterStack.Spec.ProviderRef.GetObjectKind(), err)
 	}
@@ -288,9 +327,10 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 		APIVersion: from.GetAPIVersion(),
 		Kind:       strings.TrimSuffix(from.GetKind(), "Template"),
 		Name:       name,
+		Namespace:  clusterStack.Namespace,
 	}
 
-	existingObject, err := external.Get(ctx, r.Client, ref, clusterStack.Namespace)
+	existingObject, err := external.Get(ctx, r.Client, ref)
 
 	// handle unexpected errors
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -317,7 +357,12 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 		return nil, fmt.Errorf("failed to generate template: %w", err)
 	}
 
-	objectRef := external.GetObjectReference(to)
+	objectRef := &corev1.ObjectReference{
+		Kind:       to.GetObjectKind().GroupVersionKind().Kind,
+		APIVersion: to.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+		Namespace:  to.GetNamespace(),
+		Name:       to.GetName(),
+	}
 
 	// update if it exists already and should be updated
 	if existsAlready {
@@ -709,7 +754,7 @@ func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 				},
 			}),
 		).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(mgr.GetScheme(), ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
 		Complete(r)
 }
 

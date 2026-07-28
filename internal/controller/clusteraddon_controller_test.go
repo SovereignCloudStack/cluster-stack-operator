@@ -23,9 +23,11 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"k8s.io/apimachinery/pkg/util/errors"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 )
@@ -54,8 +56,10 @@ var _ = Describe("ClusterAddonReconciler", func() {
 				Namespace: testNs.Name,
 			},
 			Spec: clusterv1.ClusterSpec{
-				Topology: &clusterv1.Topology{
-					Class:   testClusterStackName,
+				Topology: clusterv1.Topology{
+					ClassRef: clusterv1.ClusterClassRef{
+						Name: testClusterStackName,
+					},
 					Version: testKubernetesVersion,
 				},
 			},
@@ -66,7 +70,19 @@ var _ = Describe("ClusterAddonReconciler", func() {
 
 	AfterEach(func() {
 		Eventually(func() error {
-			return testEnv.Cleanup(ctx, testNs, cluster, clusterStackRelease)
+			err := testEnv.Cleanup(ctx, testNs, cluster, clusterStackRelease)
+			if err == nil {
+				return nil
+			}
+			if agg, ok := err.(errors.Aggregate); ok {
+				for _, e := range agg.Errors() {
+					if !apierrors.IsBadRequest(e) && !apierrors.IsForbidden(e) {
+						return err
+					}
+				}
+				return nil
+			}
+			return err
 		}, timeout, interval).Should(BeNil())
 	})
 
@@ -94,6 +110,26 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 
+		AfterEach(func() {
+			Eventually(func() error {
+				if err := testEnv.Delete(ctx, cluster); err != nil && !apierrors.IsNotFound(err) {
+					return err
+				}
+				return nil
+			}, timeout, interval).Should(BeNil())
+
+			Eventually(func() bool {
+				if err := testEnv.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cluster); err != nil {
+					return apierrors.IsNotFound(err)
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
+
+			Eventually(func() error {
+				return testEnv.Delete(ctx, clusterStackRelease)
+			}, timeout, interval).Should(BeNil())
+		})
+
 		It("creates the clusterAddon object", func() {
 			Expect(testEnv.Create(ctx, cluster)).To(Succeed())
 
@@ -118,7 +154,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -139,7 +175,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, csov1alpha1.ClusterReadyCondition)
+				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, string(csov1alpha1.ClusterReadyCondition))
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -149,7 +185,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -163,7 +199,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -201,7 +237,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -215,14 +251,14 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
+				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, string(csov1alpha1.HelmChartAppliedCondition))
 			}, timeout, interval).Should(BeTrue())
 
 			By("updating the cluster class")
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -244,14 +280,14 @@ var _ = Describe("ClusterAddonReconciler", func() {
 		})
 
 		It("should not call update if the ClusterAddon version does not change in the ClusterClass update", func() {
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 			Expect(testEnv.Create(ctx, cluster)).To(Succeed())
 
 			By("making the control plane ready")
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -265,14 +301,14 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
+				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, string(csov1alpha1.HelmChartAppliedCondition))
 			}, timeout, interval).Should(BeTrue())
 
 			By("updating the cluster class")
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV3
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV3
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -300,7 +336,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() error {
 				return ph.Patch(ctx, cluster)
@@ -314,7 +350,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, csov1alpha1.HelmChartAppliedCondition) &&
+				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, string(csov1alpha1.HelmChartAppliedCondition)) &&
 					foundClusterAddon.Status.Ready && foundClusterAddon.Spec.ClusterStack == testClusterStackName
 			}, timeout, interval).Should(BeTrue())
 		})
@@ -349,18 +385,32 @@ var _ = Describe("ClusterAddonReconciler", func() {
 
 		AfterEach(func() {
 			Eventually(func() error {
-				return testEnv.Cleanup(ctx, clusterStackRelease)
+				if err := testEnv.Delete(ctx, cluster); err != nil && !apierrors.IsNotFound(err) {
+					return err
+				}
+				return nil
+			}, timeout, interval).Should(BeNil())
+
+			Eventually(func() bool {
+				if err := testEnv.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cluster); err != nil {
+					return apierrors.IsNotFound(err)
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
+
+			Eventually(func() error {
+				return testEnv.Delete(ctx, clusterStackRelease)
 			}, timeout, interval).Should(BeNil())
 		})
 
 		It("does not update the clusteraddon helm chart objects if cluster switches to new cluster stack without new clusteraddon version", func() {
-			cluster.Spec.Topology.Class = testClusterStackNameV2
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV2
 			Expect(testEnv.Create(ctx, cluster)).To(Succeed())
 
 			ph, err := patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+			conditions.Set(cluster, metav1.Condition{Type: string(clusterv1.ControlPlaneReadyV1Beta1Condition), Status: metav1.ConditionTrue, Reason: "ControlPlaneReady"})
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {
@@ -374,7 +424,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 			ph, err = patch.NewHelper(cluster, testEnv)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			cluster.Spec.Topology.Class = testClusterStackNameV3
+			cluster.Spec.Topology.ClassRef.Name = testClusterStackNameV3
 
 			Eventually(func() bool {
 				if err := ph.Patch(ctx, cluster); err != nil {

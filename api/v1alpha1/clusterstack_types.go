@@ -20,7 +20,6 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 // ClusterStackSpec defines the desired state of ClusterStack.
@@ -75,7 +74,7 @@ type ClusterStackStatus struct {
 	UsableVersions string `json:"usableVersions,omitempty"`
 
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // ClusterStackReleaseSummary gives the summary of the status of a ClusterStackRelease object.
@@ -132,12 +131,12 @@ type ClusterStack struct {
 }
 
 // GetConditions returns the observations of the operational state of the ClusterAddon resource.
-func (r *ClusterStack) GetConditions() clusterv1.Conditions {
+func (r *ClusterStack) GetConditions() []metav1.Condition {
 	return r.Status.Conditions
 }
 
-// SetConditions sets the underlying service state of the ClusterAddon to the predescribed clusterv1.Conditions.
-func (r *ClusterStack) SetConditions(conditions clusterv1.Conditions) {
+// SetConditions sets the underlying service state of the ClusterAddon to the predescribed conditions.
+func (r *ClusterStack) SetConditions(conditions []metav1.Condition) {
 	r.Status.Conditions = conditions
 }
 
