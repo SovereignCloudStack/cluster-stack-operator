@@ -20,7 +20,6 @@ import (
 	"errors"
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
-	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -28,7 +27,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -139,7 +139,7 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 				}
 				testEnv.GetLogger().Info("clusterStackRelease condition", "condition", foundClusterStackRelease.Status.Conditions)
 
-				return utils.IsPresentAndTrue(ctx, testEnv, key, &foundClusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
+				err := testEnv.Get(ctx, key, &foundClusterStackRelease); if err != nil { return false }; return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -239,7 +239,7 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 					testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "key", key)
 					return false
 				}
-				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition)
+				err := testEnv.Client.Get(ctx, key, &foundClusterStackRelease); if err != nil { return false }; return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
@@ -252,7 +252,7 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 					return false
 				}
 				testEnv.GetLogger().Info("status of ClusterStackRelease", "status", foundClusterStackRelease.Status)
-				return utils.IsPresentAndFalseWithReason(ctx, testEnv.Client, key, &foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition, csov1alpha1.ProcessOngoingReason)
+				return conditions.Get(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition).Status == corev1.ConditionFalse && conditions.Get(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition).Reason == csov1alpha1.ProcessOngoingReason
 			}, timeout, interval).Should(BeTrue())
 		})
 	})

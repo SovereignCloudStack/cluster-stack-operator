@@ -54,10 +54,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -296,7 +296,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	}
 
 	// multi-stage cluster addon flow
-	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
+	in.addonStagesInput, err = r.getAddonStagesInput(restConfig, in.clusterAddonChartPath)
 	if err != nil {
 		conditions.MarkFalse(
 			clusterAddon,
@@ -429,7 +429,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
 		// remove the status resource if hook is finished
-		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+		in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 		// remove the helm chart status from the status.
 		clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
@@ -507,7 +507,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
 
 	// remove the status resource if hook is finished
-	clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+	in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 	// unset spec hook
 	clusterAddon.Spec.Hook = ""
@@ -642,7 +642,7 @@ func cleanUpResources(ctx context.Context, in *templateAndApplyClusterAddonInput
 
 	for _, resource := range extraResources {
 		if resource.Namespace == "" {
-			resource.Namespace = clusterAddonNamespace
+			resource.Namespace = in.clusterAddon.Namespace
 		}
 		dr, err := kube.GetDynamicResourceInterface(resource.Namespace, in.restConfig, resource.GroupVersionKind())
 		if err != nil {
@@ -751,7 +751,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
 
-	kubeClient := r.KubeClientFactory.NewClient(clusterAddonNamespace, in.restConfig)
+	kubeClient := r.KubeClientFactory.NewClient(in.clusterAddon.Namespace, in.restConfig)
 
 	newResources, shouldRequeue, err := kubeClient.Apply(ctx, helmTemplate, in.clusterAddon.Status.Resources)
 	if err != nil {
@@ -1281,7 +1281,7 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 
 	for name, ref := range referenceMap {
 		objectRef := referenceMap[name]
-		obj, err := external.Get(ctx, c, &objectRef, cluster.Namespace)
+		obj, err := external.Get(ctx, c, &objectRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object %s: %w", ref.Name, err)
 		}
@@ -1297,7 +1297,7 @@ func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 	blder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterAddon{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue))
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(r.Scheme(), logger, r.WatchFilterValue))
 
 	// check also for updates in cluster objects
 	return blder.WatchesRawSource(

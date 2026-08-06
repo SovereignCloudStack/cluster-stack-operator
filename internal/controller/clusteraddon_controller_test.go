@@ -18,16 +18,15 @@ package controller
 
 import (
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
-	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 )
 
 var _ = Describe("ClusterAddonReconciler", func() {
@@ -139,7 +138,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, csov1alpha1.ClusterReadyCondition)
+				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.ClusterReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -215,7 +214,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
+				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 
 			By("updating the cluster class")
@@ -265,7 +264,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
+				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 
 			By("updating the cluster class")
@@ -314,7 +313,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.GetClient(), key, &foundClusterAddon, csov1alpha1.HelmChartAppliedCondition) &&
+				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition) &&
 					foundClusterAddon.Status.Ready && foundClusterAddon.Spec.ClusterStack == testClusterStackName
 			}, timeout, interval).Should(BeTrue())
 		})
