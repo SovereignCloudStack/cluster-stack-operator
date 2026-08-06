@@ -21,16 +21,15 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/internal/test/helpers"
-	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	capisecret "sigs.k8s.io/cluster-api/util/secret"
 )
 
@@ -135,7 +134,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, clusterv1.ReadyCondition)
+				err := testEnv.Client.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -493,7 +492,7 @@ var _ = Describe("ClusterAddonReconcilerNewWay", func() {
 					return false
 				}
 
-				return utils.IsPresentAndTrue(ctx, testEnv.Client, key, &foundClusterAddon, clusterv1.ReadyCondition)
+				err := testEnv.Client.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 	})

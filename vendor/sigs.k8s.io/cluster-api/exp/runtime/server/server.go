@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
-	runtimehooksv1 "sigs.k8s.io/cluster-api/exp/runtime/hooks/api/v1alpha1"
 )
 
 // DefaultPort is the default port that the webhook server serves.
@@ -80,6 +80,10 @@ type Options struct {
 	// Note: This option is only used when TLSOpts does not set GetCertificate.
 	KeyName string
 
+	// ClientCAName is the CA certificate name which server used to verify remote(client)'s certificate.
+	// Defaults to "", which means server does not verify client's certificate.
+	ClientCAName string
+
 	// TLSOpts is used to allow configuring the TLS config used for the server.
 	// This also allows providing a certificate via GetCertificate.
 	TLSOpts []func(*tls.Config)
@@ -105,13 +109,14 @@ func New(options Options) (*Server, error) {
 
 	webhookServer := webhook.NewServer(
 		webhook.Options{
-			Port:       options.Port,
-			Host:       options.Host,
-			CertDir:    options.CertDir,
-			CertName:   options.CertName,
-			KeyName:    options.KeyName,
-			TLSOpts:    options.TLSOpts,
-			WebhookMux: http.NewServeMux(),
+			Port:         options.Port,
+			Host:         options.Host,
+			ClientCAName: options.ClientCAName,
+			CertDir:      options.CertDir,
+			CertName:     options.CertName,
+			KeyName:      options.KeyName,
+			TLSOpts:      options.TLSOpts,
+			WebhookMux:   http.NewServeMux(),
 		},
 	)
 
@@ -250,7 +255,7 @@ func (s *Server) Start(ctx context.Context) error {
 		handler := h
 
 		wrappedHandler := s.wrapHandler(handler)
-		s.Server.Register(handlerPath, http.HandlerFunc(wrappedHandler))
+		s.Register(handlerPath, http.HandlerFunc(wrappedHandler))
 	}
 
 	return s.Server.Start(ctx)

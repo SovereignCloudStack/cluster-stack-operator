@@ -32,9 +32,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 )
 
 func TestMakeDiff(t *testing.T) {
@@ -495,7 +495,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}
 
 				Eventually(func() error {
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef)
 					return err
 				}, timeout).Should(BeNil())
 			})
@@ -568,7 +568,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name); err != nil {
+					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef); err != nil {
 						testEnv.GetLogger().Error(err, "failed to get providerClusterStackRelease", "ref", foundProviderclusterStackReleaseRef)
 						return err
 					}
@@ -580,7 +580,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name); err != nil {
+					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef); err != nil {
 						testEnv.GetLogger().Error(err, "failed to get providerClusterStackRelease", "ref", foundProviderclusterStackReleaseRef)
 						return err
 					}
@@ -611,7 +611,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef)
 					return apierrors.IsNotFound(err)
 				}, timeout, interval).Should(BeTrue())
 			})
