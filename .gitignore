@@ -27,6 +27,7 @@ temp
 *.swo
 .DS_Store
 .envrc
+.open_magi/*
 
 # Tilt files.
 .tiltbuild
