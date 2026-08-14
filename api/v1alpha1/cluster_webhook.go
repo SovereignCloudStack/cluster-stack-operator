@@ -126,13 +126,19 @@ func (r *Cluster) isVersionCorrect(ctx context.Context, cluster *clusterv1.Clust
 		return nil, field.Invalid(field.NewPath("spec", "topology", "class"), cluster.Spec.Topology.Class, "class field cannot be empty")
 	}
 
-	wantKubernetesVersion, err := r.getClusterStackReleaseVersion(ctx, release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.Class), cluster.Namespace)
+	// Get the namespace of the ClusterClass - use classNamespace if set, otherwise fallback to cluster namespace
+	classNamespace := cluster.Spec.Topology.ClassNamespace
+	if classNamespace == "" {
+		classNamespace = cluster.Namespace
+	}
+
+	wantKubernetesVersion, err := r.getClusterStackReleaseVersion(ctx, release.ConvertFromClusterClassToClusterStackFormat(cluster.Spec.Topology.Class), classNamespace)
 	if err != nil {
 		return admission.Warnings{fmt.Sprintf("cannot validate clusterClass and Kubernetes version. Getting clusterStackRelease object failed: %s", err.Error())}, nil
 	}
 
 	if wantKubernetesVersion == "" {
-		return admission.Warnings{fmt.Sprintf("no Kubernetes version set in status of clusterStackRelease object. Cannot validate Kubernetes version. Check out the ClusterStackReleaseObject %s/%s manually", cluster.Namespace, cluster.Spec.Topology.Class)}, nil
+		return admission.Warnings{fmt.Sprintf("no Kubernetes version set in status of clusterStackRelease object. Cannot validate Kubernetes version. Check out the ClusterStackReleaseObject %s/%s manually", classNamespace, cluster.Spec.Topology.Class)}, nil
 	}
 
 	if cluster.Spec.Topology.Version != wantKubernetesVersion {
