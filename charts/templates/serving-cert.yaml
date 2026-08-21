@@ -12,7 +12,7 @@ spec:
   issuerRef:
     kind: Issuer
     name: '{{ include "cso.fullname" . }}-selfsigned-issuer'
-  secretName: cso-webhook-server-cert
+  secretName: {{ include "cso.fullname" . }}-webhook-server-cert
   subject:
     organizations:
     - k8s-sig-cluster-lifecycle

@@ -37,10 +37,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -279,7 +279,7 @@ func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Cont
 
 func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx context.Context, name string, clusterStack *csov1alpha1.ClusterStack) (*corev1.ObjectReference, error) {
 	// get template object where the object is based on
-	from, err := external.Get(ctx, r.Client, clusterStack.Spec.ProviderRef, clusterStack.Namespace)
+	from, err := external.Get(ctx, r.Client, clusterStack.Spec.ProviderRef)
 	if err != nil {
 		return nil, fmt.Errorf("ProviderClusterStackReleaseTemplate %q for kind %q not found: %w", clusterStack.Spec.ProviderRef.Name, clusterStack.Spec.ProviderRef.GetObjectKind(), err)
 	}
@@ -290,7 +290,7 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 		Name:       name,
 	}
 
-	existingObject, err := external.Get(ctx, r.Client, ref, clusterStack.Namespace)
+	existingObject, err := external.Get(ctx, r.Client, ref)
 
 	// handle unexpected errors
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -317,7 +317,13 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 		return nil, fmt.Errorf("failed to generate template: %w", err)
 	}
 
-	objectRef := external.GetObjectReference(to)
+	// create ObjectReference manually since external.GetObjectReference is removed in CAPI v1.11
+	objectRef := &corev1.ObjectReference{
+		APIVersion: to.GetAPIVersion(),
+		Kind:       to.GetKind(),
+		Name:       to.GetName(),
+		Namespace:  to.GetNamespace(),
+	}
 
 	// update if it exists already and should be updated
 	if existsAlready {
@@ -709,7 +715,7 @@ func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 				},
 			}),
 		).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(r.Scheme(), ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
 		Complete(r)
 }
 

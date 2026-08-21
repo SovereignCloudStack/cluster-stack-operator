@@ -36,10 +36,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -255,7 +255,7 @@ func downloadReleaseAssets(ctx context.Context, releaseTag, downloadPath string,
 
 func (r *ClusterStackReleaseReconciler) updateProviderClusterStackRelease(ctx context.Context, clusterStackRelease *csov1alpha1.ClusterStackRelease) (bool, error) {
 	// fetch providerClusterStackReleaseObject to update that object accordingly and get information from it
-	providerClusterStackRelease, err := external.Get(ctx, r.Client, clusterStackRelease.Spec.ProviderRef, clusterStackRelease.Namespace)
+	providerClusterStackRelease, err := external.Get(ctx, r.Client, clusterStackRelease.Spec.ProviderRef)
 	if err != nil {
 		return false, fmt.Errorf("failed to get ProviderClusterStackRelease object: %w", err)
 	}
@@ -359,7 +359,7 @@ func (r *ClusterStackReleaseReconciler) SetupWithManager(ctx context.Context, mg
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterStackRelease{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log.FromContext(ctx), r.WatchFilterValue)).
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(r.Scheme(), log.FromContext(ctx), r.WatchFilterValue)).
 		Build(r)
 	if err != nil {
 		return fmt.Errorf("failed to set up with a controller manager: %w", err)
