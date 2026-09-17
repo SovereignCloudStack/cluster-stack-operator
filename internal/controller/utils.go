@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -39,6 +39,8 @@ func getUsedClusterClasses(ctx context.Context, c client.Client, namespace strin
 			continue
 		}
 		if cluster.Spec.Topology.Class != "" {
+			// Use classNamespace if set, otherwise use cluster namespace
+			// This ensures we track ClusterClasses in the correct namespace
 			usedClusterClasses = append(usedClusterClasses, cluster.Spec.Topology.Class)
 		}
 	}

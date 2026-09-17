@@ -20,7 +20,7 @@ import (
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 // ClusterStackSpec defines the desired state of ClusterStack.
@@ -75,6 +75,10 @@ type ClusterStackStatus struct {
 	UsableVersions string `json:"usableVersions,omitempty"`
 
 	// +optional
+	// ponytail: Keeping clusterv1.Conditions (v1beta1) as per CAPI migration Stage 1 guidance
+	// Per feedback: Do NOT migrate conditions library in this PR. Proper migration requires
+	// adding a new API version ourselves. See:
+	// https://release-1-11.cluster-api.sigs.k8s.io/developer/providers/migrations/v1.10-to-v1.11
 	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 

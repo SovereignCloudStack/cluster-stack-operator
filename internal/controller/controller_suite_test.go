@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"path/filepath"
+	goruntime "runtime"
 	"testing"
 	"time"
 
@@ -53,11 +55,16 @@ var (
 )
 
 var _ = BeforeSuite(func() {
+	// Get the root of the current file to use in release paths.
+	_, filename, _, _ := goruntime.Caller(0) //nolint:dogsled // external function
+	root := filepath.Join(filepath.Dir(filename), "..", "..")
+	releaseDir := filepath.Join(root, "test", "releases")
+
 	testEnv = helpers.NewTestEnvironment()
 
 	Expect((&ClusterStackReconciler{
 		Client:              testEnv.Manager.GetClient(),
-		ReleaseDirectory:    "./../../test/releases",
+		ReleaseDirectory:    releaseDir,
 		AssetsClientFactory: testEnv.AssetsClientFactory,
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
 
@@ -66,12 +73,12 @@ var _ = BeforeSuite(func() {
 		RESTConfig:          testEnv.Manager.GetConfig(),
 		KubeClientFactory:   kube.NewFactory(),
 		AssetsClientFactory: testEnv.AssetsClientFactory,
-		ReleaseDirectory:    "./../../test/releases",
+		ReleaseDirectory:    releaseDir,
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
 
 	Expect((&ClusterAddonReconciler{
 		Client:                 testEnv.Manager.GetClient(),
-		ReleaseDirectory:       "./../../test/releases",
+		ReleaseDirectory:       releaseDir,
 		KubeClientFactory:      testEnv.KubeClientFactory,
 		WorkloadClusterFactory: fakeworkloadcluster.NewFactory(),
 	}).SetupWithManager(ctx, testEnv.Manager, c.Options{})).To(Succeed())
