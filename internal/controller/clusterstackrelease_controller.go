@@ -355,6 +355,8 @@ func helmTemplate(chartPath, releaseName, namespace string) ([]byte, error) {
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:gocritic // controller.Options pass-through to controller builder
 func (r *ClusterStackReleaseReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).

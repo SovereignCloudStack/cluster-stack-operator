@@ -134,7 +134,11 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				err := testEnv.Client.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
+				err := testEnv.Client.Get(ctx, key, &foundClusterAddon)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -492,7 +496,11 @@ var _ = Describe("ClusterAddonReconcilerNewWay", func() {
 					return false
 				}
 
-				err := testEnv.Client.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
+				err := testEnv.Client.Get(ctx, key, &foundClusterAddon)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 	})

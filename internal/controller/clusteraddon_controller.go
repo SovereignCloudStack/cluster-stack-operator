@@ -751,7 +751,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
 
-	kubeClient := r.KubeClientFactory.NewClient(in.clusterAddon.Namespace, in.restConfig)
+	kubeClient := r.KubeClientFactory.NewClient(clusterAddonNamespace, in.restConfig)
 
 	newResources, shouldRequeue, err := kubeClient.Apply(ctx, helmTemplate, in.clusterAddon.Status.Resources)
 	if err != nil {
@@ -1276,7 +1276,7 @@ func helmTemplateClusterAddon(chartPath string, helmTemplate []byte, kubernetesV
 
 // initializeBuiltins takes a map of keys to object references, attempts to get the referenced objects, and returns a map of keys to the actual objects.
 // These objects are a map[string]interface{} so that they can be used as values in the template.
-func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[string]corev1.ObjectReference, cluster *clusterv1.Cluster) (map[string]interface{}, error) {
+func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[string]corev1.ObjectReference, _ *clusterv1.Cluster) (map[string]interface{}, error) {
 	valueLookUp := make(map[string]interface{})
 
 	for name, ref := range referenceMap {
@@ -1292,6 +1292,8 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:gocritic // controller.Options pass-through to controller builder
 func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	logger := ctrl.LoggerFrom(ctx)
 	blder := ctrl.NewControllerManagedBy(mgr).

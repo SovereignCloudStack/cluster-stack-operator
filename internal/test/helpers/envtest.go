@@ -414,14 +414,14 @@ func getFilePathToCAPIBootstrapCRDs(root string) string {
 // Variante auf v1beta1 (CAPI v1.11 speichert v1beta2). Ohne Conversion-Webhook
 // in envtest waehlt der API-Server sonst die v1beta2-Storage und
 // spec.topology.class geht beim Roundtrip verloren.
-func storageVariantFromCAPI(path string) (*apiextensionsv1.CustomResourceDefinition, error) {
-	f, err := os.ReadFile(path)
+func storageVariantFromCAPI(filePath string) (*apiextensionsv1.CustomResourceDefinition, error) {
+	f, err := os.ReadFile(filePath) //#nosec G304 // liest nur CRD-Pfade aus dem CAPI-Modulcache
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read CRD file: %w", err)
 	}
 	var crd apiextensionsv1.CustomResourceDefinition
 	if err := yaml.Unmarshal(f, &crd); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal CRD file: %w", err)
 	}
 	for i := range crd.Spec.Versions {
 		switch crd.Spec.Versions[i].Name {

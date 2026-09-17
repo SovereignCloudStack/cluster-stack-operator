@@ -98,6 +98,8 @@ func (r *ClusterAddonCreateReconciler) Reconcile(ctx context.Context, req reconc
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:gocritic // controller.Options pass-through to controller builder
 func (r *ClusterAddonCreateReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).

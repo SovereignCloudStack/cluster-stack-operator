@@ -44,7 +44,7 @@ func (w *ClusterAddonWebhook) SetupWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type.
-func (w *ClusterAddonWebhook) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (*ClusterAddonWebhook) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	clusterAddon, ok := obj.(*ClusterAddon)
 	if !ok {
 		return admission.Warnings{}, apierrors.NewBadRequest(fmt.Sprintf("expected a ClusterAddon but got a %T", obj))
@@ -61,14 +61,14 @@ func (w *ClusterAddonWebhook) ValidateCreate(_ context.Context, obj runtime.Obje
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type.
-func (w *ClusterAddonWebhook) ValidateUpdate(_ context.Context, old runtime.Object, new runtime.Object) (admission.Warnings, error) {
-	oldM, ok := old.(*ClusterAddon)
+func (*ClusterAddonWebhook) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	oldM, ok := oldObj.(*ClusterAddon)
 	if !ok {
-		return admission.Warnings{}, apierrors.NewBadRequest(fmt.Sprintf("expected an ClusterAddon but got a %T", old))
+		return admission.Warnings{}, apierrors.NewBadRequest(fmt.Sprintf("expected an ClusterAddon but got a %T", oldObj))
 	}
-	newM, ok := new.(*ClusterAddon)
+	newM, ok := newObj.(*ClusterAddon)
 	if !ok {
-		return admission.Warnings{}, apierrors.NewBadRequest(fmt.Sprintf("expected a ClusterAddon but got a %T", new))
+		return admission.Warnings{}, apierrors.NewBadRequest(fmt.Sprintf("expected a ClusterAddon but got a %T", newObj))
 	}
 
 	var allErrs field.ErrorList
@@ -103,6 +103,6 @@ func (w *ClusterAddonWebhook) ValidateUpdate(_ context.Context, old runtime.Obje
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type.
-func (w *ClusterAddonWebhook) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (*ClusterAddonWebhook) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

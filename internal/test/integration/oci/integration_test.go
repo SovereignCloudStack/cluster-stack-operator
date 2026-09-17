@@ -27,8 +27,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -96,7 +96,11 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}
 
 				testEnv.GetLogger().Info("status condition of cluster stack release", "key", clusterStackReleaseKey, "status condition", foundClusterStackRelease.Status.Conditions)
-				err := testEnv.Client.Get(ctx, clusterStackReleaseKey, &foundClusterStackRelease); if err != nil { return false }; return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
+				err := testEnv.Client.Get(ctx, clusterStackReleaseKey, &foundClusterStackRelease)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.AssetsClientAPIAvailableCondition)
 			}, timeout, interval).Should(BeTrue())
 
 			By("checking that ClusterStackReleaseDownloaded condition is true")
@@ -109,7 +113,11 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}
 				testEnv.GetLogger().Info("status condition of cluster stack release", "key", clusterStackReleaseKey, "status condition", clusterStackRelease.Status.Conditions)
 
-				err := testEnv.Client.Get(ctx, clusterStackReleaseKey, &clusterStackRelease); if err != nil { return false }; return conditions.IsTrue(&clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
+				err := testEnv.Client.Get(ctx, clusterStackReleaseKey, &clusterStackRelease)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&clusterStackRelease, csov1alpha1.ClusterStackReleaseAssetsReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 
 			By("checking that ClusterStackRelease Status is ready")

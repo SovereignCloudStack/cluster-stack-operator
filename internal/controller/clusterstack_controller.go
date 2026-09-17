@@ -678,6 +678,8 @@ func generateOwnerReference(clusterStack *csov1alpha1.ClusterStack) *metav1.Owne
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:gocritic // controller.Options pass-through to controller builder
 func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
