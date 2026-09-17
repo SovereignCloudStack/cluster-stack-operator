@@ -50,15 +50,15 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/log"
 	dockerv1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util/kubeconfig"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	kind "sigs.k8s.io/kind/pkg/cluster"
+	"sigs.k8s.io/yaml"
 )
 
 func init() {
@@ -117,8 +117,34 @@ func init() {
 		crdPaths = append(crdPaths, capiControlPlanePath)
 	}
 
+	// CAPI v1.11 speichert Clusters in v1beta2, wo spec.topology.class durch
+	// spec.topology.classRef ersetzt ist. Ohne laufenden CAPI-Conversion-Webhook
+	// (nur im echten Cluster vorhanden) faellt die Conversion-Strategie auf None
+	// zurueck und spec.topology.class geht beim v1beta1-Roundtrip verloren — jede
+	// Klasse-lesende Code-Strecke (addon release.New, Delete-Webhooks) faellt mit
+	// "invalid format" um. Deshalb die Cluster-CRD mit v1beta1 als storage-Variante
+	// bereitstellen.
+	capiCRDs := []*apiextensionsv1.CustomResourceDefinition{}
 	if capiPath := getFilePathToCAPICRDs(root); capiPath != "" {
-		crdPaths = append(crdPaths, capiPath)
+		entries, err := os.ReadDir(capiPath)
+		if err != nil {
+			klog.Fatalf("failed to read CAPI CRD dir: %s", err)
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".yaml") {
+				continue
+			}
+			if name == "cluster.x-k8s.io_clusters.yaml" {
+				crd, err := storageVariantFromCAPI(filepath.Join(capiPath, name))
+				if err != nil {
+					klog.Fatalf("failed to patch CAPI clusters CRD: %s", err)
+				}
+				capiCRDs = append(capiCRDs, crd)
+				continue
+			}
+			crdPaths = append(crdPaths, filepath.Join(capiPath, name))
+		}
 	}
 
 	if capiDockerPath := getFilePathToCAPIDockerCRDs(root); capiDockerPath != "" {
@@ -130,10 +156,13 @@ func init() {
 		Scheme:                scheme,
 		ErrorIfCRDPathMissing: true,
 		CRDDirectoryPaths:     crdPaths,
-		CRDs: []*apiextensionsv1.CustomResourceDefinition{
-			builder.TestInfrastructureProviderClusterStackReleaseTemplateCRD.DeepCopy(),
-			builder.TestInfrastructureProviderClusterStackReleaseCRD.DeepCopy(),
-		},
+		CRDs: append(
+			[]*apiextensionsv1.CustomResourceDefinition{
+				builder.TestInfrastructureProviderClusterStackReleaseTemplateCRD.DeepCopy(),
+				builder.TestInfrastructureProviderClusterStackReleaseCRD.DeepCopy(),
+			},
+			capiCRDs...,
+		),
 	}
 }
 
@@ -182,7 +211,7 @@ func NewTestEnvironment() *TestEnvironment {
 	if err := (&csov1alpha1.ClusterStackWebhook{Client: mgr.GetClient()}).SetupWebhookWithManager(mgr); err != nil {
 		klog.Fatalf("failed to set up webhook with manager for ClusterStack: %s", err)
 	}
-	if err := (&csov1alpha1.ClusterAddon{}).SetupWebhookWithManager(mgr); err != nil {
+	if err := (&csov1alpha1.ClusterAddonWebhook{}).SetupWebhookWithManager(mgr); err != nil {
 		klog.Fatalf("failed to set up webhook with manager for ClusterAddon: %s", err)
 	}
 	if err := (&csov1alpha1.Cluster{}).SetupWebhookWithManager(mgr); err != nil {
@@ -321,14 +350,6 @@ func (t *TestEnvironment) CreateNamespace(ctx context.Context, generateName stri
 	return ns, nil
 }
 
-// CreateKubeconfigSecret generates a kubeconfig secret in a given capi cluster.
-func (t *TestEnvironment) CreateKubeconfigSecret(ctx context.Context, cluster *clusterv1.Cluster) error {
-	if err := t.Create(ctx, kubeconfig.GenerateSecret(cluster, kubeconfig.FromEnvTestConfig(t.Config, cluster))); err != nil {
-		return fmt.Errorf("failed to create secret: %w", err)
-	}
-	return nil
-}
-
 func getFilePathToCAPICRDs(root string) string {
 	mod, err := utils.NewMod(filepath.Join(root, "go.mod"))
 	if err != nil {
@@ -387,6 +408,31 @@ func getFilePathToCAPIBootstrapCRDs(root string) string {
 
 	gopath := envOr("GOPATH", build.Default.GOPATH)
 	return filepath.Join(gopath, "pkg", "mod", "sigs.k8s.io", fmt.Sprintf("cluster-api@%s", clusterAPIVersion), "bootstrap", "kubeadm", "config", "crd", "bases")
+}
+
+// storageVariantFromCAPI liest die Cluster-CRD und ueberschreibt die Storage-
+// Variante auf v1beta1 (CAPI v1.11 speichert v1beta2). Ohne Conversion-Webhook
+// in envtest waehlt der API-Server sonst die v1beta2-Storage und
+// spec.topology.class geht beim Roundtrip verloren.
+func storageVariantFromCAPI(path string) (*apiextensionsv1.CustomResourceDefinition, error) {
+	f, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var crd apiextensionsv1.CustomResourceDefinition
+	if err := yaml.Unmarshal(f, &crd); err != nil {
+		return nil, err
+	}
+	for i := range crd.Spec.Versions {
+		switch crd.Spec.Versions[i].Name {
+		case "v1beta1":
+			crd.Spec.Versions[i].Storage = true
+		case "v1beta2":
+			crd.Spec.Versions[i].Storage = false
+		}
+	}
+	crd.Spec.Conversion = nil
+	return &crd, nil
 }
 
 func envOr(envKey, defaultValue string) string {

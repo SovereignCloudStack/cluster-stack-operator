@@ -139,7 +139,11 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 				}
 				testEnv.GetLogger().Info("clusterStackRelease condition", "condition", foundClusterStackRelease.Status.Conditions)
 
-				err := testEnv.Get(ctx, key, &foundClusterStackRelease); if err != nil { return false }; return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
+				err := testEnv.Get(ctx, key, &foundClusterStackRelease)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -239,7 +243,11 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 					testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "key", key)
 					return false
 				}
-				err := testEnv.Client.Get(ctx, key, &foundClusterStackRelease); if err != nil { return false }; return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition)
+				err := testEnv.Client.Get(ctx, key, &foundClusterStackRelease)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
@@ -252,7 +260,11 @@ var _ = Describe("ClusterStackReleaseReconciler", func() {
 					return false
 				}
 				testEnv.GetLogger().Info("status of ClusterStackRelease", "status", foundClusterStackRelease.Status)
-				return conditions.Get(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition).Status == corev1.ConditionFalse && conditions.Get(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition).Reason == csov1alpha1.ProcessOngoingReason
+				cond := conditions.Get(&foundClusterStackRelease, csov1alpha1.ProviderClusterStackReleaseReadyCondition)
+				if cond == nil {
+					return false
+				}
+				return cond.Status == corev1.ConditionFalse && cond.Reason == csov1alpha1.ProcessOngoingReason
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
@@ -322,6 +334,10 @@ var _ = Describe("ClusterStackRelease validation", func() {
 
 		It("should not allow delete if ClusterStackRelease is in use by Cluster", func() {
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+			Eventually(func() error {
+				var foundCluster clusterv1.Cluster
+				return testEnv.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: testNs.Name}, &foundCluster)
+			}, timeout, interval).Should(Succeed())
 			Expect(testEnv.Delete(ctx, clusterStackRelease)).ToNot(Succeed())
 		})
 

@@ -288,6 +288,7 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 		APIVersion: from.GetAPIVersion(),
 		Kind:       strings.TrimSuffix(from.GetKind(), "Template"),
 		Name:       name,
+		Namespace:  clusterStack.Namespace,
 	}
 
 	existingObject, err := external.Get(ctx, r.Client, ref)

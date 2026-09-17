@@ -365,9 +365,12 @@ func (r *ClusterStackReleaseReconciler) SetupWithManager(ctx context.Context, mg
 		return fmt.Errorf("failed to set up with a controller manager: %w", err)
 	}
 
+	logger := log.FromContext(ctx)
 	r.externalTracker = external.ObjectTracker{
-		Controller: c,
-		Cache:      mgr.GetCache(),
+		Controller:      c,
+		Cache:           mgr.GetCache(),
+		Scheme:          mgr.GetScheme(),
+		PredicateLogger: &logger,
 	}
 	return nil
 }

@@ -138,7 +138,11 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.ClusterReadyCondition)
+				err := testEnv.Get(ctx, key, &foundClusterAddon)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterAddon, csov1alpha1.ClusterReadyCondition)
 			}, timeout, interval).Should(BeTrue())
 		})
 
@@ -178,7 +182,6 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					testEnv.GetLogger().Info(err.Error())
 					return false
 				}
-
 				if foundClusterAddon.Spec.ClusterStack != testClusterStackNameV2 {
 					testEnv.GetLogger().Info("found wrong cluster stack", "want", testClusterStackNameV2, "got", foundClusterAddon.Spec.ClusterStack)
 					return false
@@ -214,7 +217,11 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
+				err := testEnv.Get(ctx, key, &foundClusterAddon)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 
 			By("updating the cluster class")
@@ -264,7 +271,11 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
+				err := testEnv.Get(ctx, key, &foundClusterAddon)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)
 			}, timeout, interval).Should(BeTrue())
 
 			By("updating the cluster class")
@@ -313,7 +324,11 @@ var _ = Describe("ClusterAddonReconciler", func() {
 					return false
 				}
 
-				err := testEnv.Get(ctx, key, &foundClusterAddon); if err != nil { return false }; return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition) &&
+				err := testEnv.Get(ctx, key, &foundClusterAddon)
+				if err != nil {
+					return false
+				}
+				return conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition) &&
 					foundClusterAddon.Status.Ready && foundClusterAddon.Spec.ClusterStack == testClusterStackName
 			}, timeout, interval).Should(BeTrue())
 		})

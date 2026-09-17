@@ -840,7 +840,8 @@ var _ = Describe("clusterStack validation", func() {
 				},
 				Spec: clusterv1.ClusterSpec{
 					Topology: &clusterv1.Topology{
-						Class: "docker-ferrol-1-27-v6",
+						Class:   "docker-ferrol-1-27-v6",
+						Version: testKubernetesVersion,
 					},
 				},
 			}
@@ -854,6 +855,10 @@ var _ = Describe("clusterStack validation", func() {
 
 		It("should not allow delete if ClusterStack is in use by Cluster", func() {
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+			Eventually(func() error {
+				var foundCluster clusterv1.Cluster
+				return testEnv.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: testNs.Name}, &foundCluster)
+			}, timeout, interval).Should(Succeed())
 			Expect(testEnv.Delete(ctx, clusterStack)).ToNot(Succeed())
 		})
 
