@@ -642,7 +642,7 @@ func cleanUpResources(ctx context.Context, in *templateAndApplyClusterAddonInput
 
 	for _, resource := range extraResources {
 		if resource.Namespace == "" {
-			resource.Namespace = in.clusterAddon.Namespace
+			resource.Namespace = clusterAddonNamespace
 		}
 		dr, err := kube.GetDynamicResourceInterface(resource.Namespace, in.restConfig, resource.GroupVersionKind())
 		if err != nil {
