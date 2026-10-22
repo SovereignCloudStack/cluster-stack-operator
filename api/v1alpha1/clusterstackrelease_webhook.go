@@ -21,10 +21,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterclass"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -85,20 +85,17 @@ func (r *ClusterStackReleaseWebhook) ValidateDelete(ctx context.Context, obj run
 }
 
 func (r *ClusterStackReleaseWebhook) getClustersUsingClusterStackRelease(ctx context.Context, clusterStackRelease *ClusterStackRelease) ([]string, error) {
-	clusterList := &clusterv1.ClusterList{}
-	if err := r.List(ctx, clusterList, &client.ListOptions{Namespace: clusterStackRelease.Namespace}); err != nil {
+	// clusters of all namespaces can use the ClusterClasses of this namespace (spec.topology.classNamespace)
+	clusterList, err := clusterclass.ListClustersUsingClassesOf(ctx, r.Client, clusterStackRelease.Namespace)
+	if err != nil {
 		return nil, fmt.Errorf("failed to list clusters: %w", err)
 	}
 
-	clusters := make([]string, 0, len(clusterList.Items))
+	clusters := make([]string, 0, len(clusterList))
 
 	// list the names of all ClusterClasses that are referenced in Cluster objects
-	for i := range clusterList.Items {
-		if clusterList.Items[i].Spec.Topology == nil {
-			continue
-		}
-
-		clusterClass := clusterList.Items[i].Spec.Topology.Class
+	for i := range clusterList {
+		clusterClass := clusterList[i].Spec.Topology.Class
 		clusterClassFormated, err := clusterstack.NewFromClusterClassProperties(clusterClass)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read properties from clusterClass string: %w", err)
@@ -112,7 +109,7 @@ func (r *ClusterStackReleaseWebhook) getClustersUsingClusterStackRelease(ctx con
 			clusterClassFormated.Provider == clusterStackReleaseFormatted.Provider &&
 			clusterClassFormated.KubernetesVersion == clusterStackReleaseFormatted.KubernetesVersion &&
 			clusterClassFormated.Version.String() == clusterStackReleaseFormatted.Version.String() {
-			clusters = append(clusters, clusterList.Items[i].Name)
+			clusters = append(clusters, clusterList[i].Name)
 		}
 	}
 

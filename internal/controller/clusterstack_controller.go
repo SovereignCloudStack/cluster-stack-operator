@@ -278,10 +278,15 @@ func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Cont
 }
 
 func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx context.Context, name string, clusterStack *csov1alpha1.ClusterStack) (*corev1.ObjectReference, error) {
+	// The template always lives in the namespace of the ClusterStack, the namespace of the providerRef is optional
+	// and ignored. external.Get uses the namespace of the reference, so it has to be set explicitly.
+	templateRef := clusterStack.Spec.ProviderRef.DeepCopy()
+	templateRef.Namespace = clusterStack.Namespace
+
 	// get template object where the object is based on
-	from, err := external.Get(ctx, r.Client, clusterStack.Spec.ProviderRef)
+	from, err := external.Get(ctx, r.Client, templateRef)
 	if err != nil {
-		return nil, fmt.Errorf("ProviderClusterStackReleaseTemplate %q for kind %q not found: %w", clusterStack.Spec.ProviderRef.Name, clusterStack.Spec.ProviderRef.GetObjectKind(), err)
+		return nil, fmt.Errorf("ProviderClusterStackReleaseTemplate %q for kind %q not found: %w", templateRef.Name, templateRef.GetObjectKind(), err)
 	}
 
 	ref := &corev1.ObjectReference{
@@ -306,7 +311,7 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 	input := &generateProviderObjectInput{
 		ExistingObject: existingObject,
 		Template:       from,
-		TemplateRef:    clusterStack.Spec.ProviderRef,
+		TemplateRef:    templateRef,
 		Namespace:      clusterStack.Namespace,
 		Name:           name,
 		Labels:         clusterStack.Labels,
