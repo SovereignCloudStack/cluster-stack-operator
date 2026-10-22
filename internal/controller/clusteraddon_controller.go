@@ -1276,11 +1276,15 @@ func helmTemplateClusterAddon(chartPath string, helmTemplate []byte, kubernetesV
 
 // initializeBuiltins takes a map of keys to object references, attempts to get the referenced objects, and returns a map of keys to the actual objects.
 // These objects are a map[string]interface{} so that they can be used as values in the template.
-func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[string]corev1.ObjectReference, _ *clusterv1.Cluster) (map[string]interface{}, error) {
+func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[string]corev1.ObjectReference, cluster *clusterv1.Cluster) (map[string]interface{}, error) {
 	valueLookUp := make(map[string]interface{})
 
 	for name, ref := range referenceMap {
 		objectRef := referenceMap[name]
+		// external.Get uses the namespace of the reference. References of a Cluster are in the namespace of the Cluster.
+		if objectRef.Namespace == "" {
+			objectRef.Namespace = cluster.Namespace
+		}
 		obj, err := external.Get(ctx, c, &objectRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object %s: %w", ref.Name, err)

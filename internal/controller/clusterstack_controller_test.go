@@ -501,6 +501,54 @@ var _ = Describe("ClusterStackReconciler", func() {
 			})
 		})
 
+		Context("Tests with a providerRef without namespace", func() {
+			var clusterStackReleaseTagV1Key types.NamespacedName
+
+			BeforeEach(func() {
+				clusterStack.Spec = csov1alpha1.ClusterStackSpec{
+					Provider:          "docker",
+					Name:              "ferrol",
+					KubernetesVersion: "1.27",
+					Versions:          []string{"v1"},
+					AutoSubscribe:     false,
+					// The namespace is intentionally left empty: it is optional in the documented
+					// examples and has to default to the namespace of the ClusterStack.
+					ProviderRef: &corev1.ObjectReference{
+						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+						Kind:       "TestInfrastructureProviderClusterStackReleaseTemplate",
+						Name:       "provider-test1",
+					},
+				}
+				Expect(testEnv.Create(ctx, clusterStack)).To(Succeed())
+
+				cs, err := clusterstack.New(clusterStack.Spec.Provider, clusterStack.Spec.Name, clusterStack.Spec.KubernetesVersion, "v1")
+				Expect(err).To(BeNil())
+				clusterStackReleaseTagV1Key = types.NamespacedName{Name: cs.String(), Namespace: testNs.Name}
+			})
+
+			AfterEach(func() {
+				Expect(testEnv.Cleanup(ctx, clusterStack)).To(Succeed())
+			})
+
+			It("creates the ProviderClusterStackRelease in the namespace of the ClusterStack", func() {
+				Eventually(func() error {
+					var clusterStackRelease csov1alpha1.ClusterStackRelease
+					return testEnv.Get(ctx, clusterStackReleaseTagV1Key, &clusterStackRelease)
+				}, timeout, interval).Should(BeNil())
+
+				Eventually(func() error {
+					ref := &corev1.ObjectReference{
+						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+						Kind:       "TestInfrastructureProviderClusterStackRelease",
+						Name:       clusterStackReleaseTagV1Key.Name,
+						Namespace:  testNs.Name,
+					}
+					_, err := external.Get(ctx, testEnv.GetClient(), ref)
+					return err
+				}, timeout, interval).Should(BeNil())
+			})
+		})
+
 		Context("Tests with multiple versions", func() {
 			var (
 				clusterStackReleaseTagV1    string
