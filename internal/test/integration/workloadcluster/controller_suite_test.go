@@ -34,14 +34,23 @@ const (
 	timeout  = time.Second * 30
 	interval = 100 * time.Millisecond
 
-	testClusterStackName   = "docker-ferrol-1-27-v1"
-	testClusterStackNameV2 = "docker-ferrol-1-27-v2"
-	testClusterStackNameV3 = "docker-ferrol-1-27-v3"
+	// applyTimeout is the time for specs in which the cluster addon charts are templated and applied
+	// to the workload cluster, which takes a few reconciliations.
+	applyTimeout = time.Minute * 3
 
-	// cluster stack.
-	testNewWayClusterStackName = "docker-ferrol-1-27-v0-sha-hipstsw"
-	// cluster class.
-	testNewWayClusterClassName = "docker-ferrol-1-27-v0-sha.hipstsw"
+	// The cluster stack releases in test/releases are built from the docker/scs cluster stack of
+	// https://github.com/SovereignCloudStack/cluster-stacks, see test/releases/README.md.
+	//
+	// Name of the release (the cluster stack release object) and of the cluster class of the first release.
+	testClusterStackName = "docker-scs-1-35-v0-ttl-1792740950"
+	testClusterClassName = "docker-scs-1-35-v0-ttl.1792740950"
+	// Name of the release and of the cluster class of the second release, which has the same Kubernetes version.
+	// It configures two replicas for the metrics-server and does not contain the gateway-api addon.
+	testClusterStackNameV2 = "docker-scs-1-35-v0-ttl-1792740963"
+	testClusterClassNameV2 = "docker-scs-1-35-v0-ttl.1792740963"
+
+	testKubernetesVersion = "v1.35.5"
+	testControlPlaneHost  = "test-cluster.example.com"
 )
 
 func TestControllers(t *testing.T) {

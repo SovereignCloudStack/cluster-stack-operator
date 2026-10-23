@@ -1,0 +1,2 @@
+# The operator extracts the cluster addon and cluster class archives next to the archives when the tests run.
+/cluster-stacks/docker-scs-*/*/
