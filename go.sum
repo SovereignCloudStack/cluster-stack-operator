@@ -408,6 +408,8 @@ sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 h1:/Rv+M11QRah1itp8VhT6HoVx1
 sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3/go.mod h1:18nIHnGi6636UCz6m8i4DhaJ65T6EruyzmoQqI2BVDo=
 sigs.k8s.io/kind v0.30.0 h1:2Xi1KFEfSMm0XDcvKnUt15ZfgRPCT0OnCBbpgh8DztY=
 sigs.k8s.io/kind v0.30.0/go.mod h1:FSqriGaoTPruiXWfRnUXNykF8r2t+fHtK0P0m1AbGF8=
+sigs.k8s.io/kind v0.31.0 h1:UcT4nzm+YM7YEbqiAKECk+b6dsvc/HRZZu9U0FolL1g=
+sigs.k8s.io/kind v0.31.0/go.mod h1:FSqriGaoTPruiXWfRnUXNykF8r2t+fHtK0P0m1AbGF8=
 sigs.k8s.io/kustomize/api v0.17.2 h1:E7/Fjk7V5fboiuijoZHgs4aHuexi5Y2loXlVOAVAG5g=
 sigs.k8s.io/kustomize/api v0.17.2/go.mod h1:UWTz9Ct+MvoeQsHcJ5e+vziRRkwimm3HytpZgIYqye0=
 sigs.k8s.io/kustomize/kyaml v0.17.1 h1:TnxYQxFXzbmNG6gOINgGWQt09GghzgTP6mIurOgrLCQ=

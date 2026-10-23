@@ -1063,7 +1063,7 @@ sigs.k8s.io/controller-runtime/pkg/webhook/internal/metrics
 ## explicit; go 1.21
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/kind v0.30.0
+# sigs.k8s.io/kind v0.31.0
 ## explicit; go 1.17
 sigs.k8s.io/kind/pkg/apis/config/defaults
 sigs.k8s.io/kind/pkg/apis/config/v1alpha4
