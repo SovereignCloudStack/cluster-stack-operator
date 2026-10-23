@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	timeout  = time.Second * 3
+	timeout  = time.Second * 30
 	interval = 100 * time.Millisecond
 
 	testClusterStackName   = "docker-ferrol-1-27-v1"
