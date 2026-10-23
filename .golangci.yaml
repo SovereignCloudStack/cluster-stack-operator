@@ -193,6 +193,8 @@ linters:
       checks:
         - all
         - -ST1006
+        # v1beta1 bewusst beibehalten bis Stage-2-Migration auf v1beta2
+        - -SA1019
       dot-import-whitelist:
         - github.com/onsi/gomega
         - github.com/onsi/ginkgo/v2

@@ -32,9 +32,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 )
 
 func TestMakeDiff(t *testing.T) {
@@ -495,9 +495,57 @@ var _ = Describe("ClusterStackReconciler", func() {
 				}
 
 				Eventually(func() error {
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef)
 					return err
 				}, timeout).Should(BeNil())
+			})
+		})
+
+		Context("Tests with a providerRef without namespace", func() {
+			var clusterStackReleaseTagV1Key types.NamespacedName
+
+			BeforeEach(func() {
+				clusterStack.Spec = csov1alpha1.ClusterStackSpec{
+					Provider:          "docker",
+					Name:              "ferrol",
+					KubernetesVersion: "1.27",
+					Versions:          []string{"v1"},
+					AutoSubscribe:     false,
+					// The namespace is intentionally left empty: it is optional in the documented
+					// examples and has to default to the namespace of the ClusterStack.
+					ProviderRef: &corev1.ObjectReference{
+						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+						Kind:       "TestInfrastructureProviderClusterStackReleaseTemplate",
+						Name:       "provider-test1",
+					},
+				}
+				Expect(testEnv.Create(ctx, clusterStack)).To(Succeed())
+
+				cs, err := clusterstack.New(clusterStack.Spec.Provider, clusterStack.Spec.Name, clusterStack.Spec.KubernetesVersion, "v1")
+				Expect(err).To(BeNil())
+				clusterStackReleaseTagV1Key = types.NamespacedName{Name: cs.String(), Namespace: testNs.Name}
+			})
+
+			AfterEach(func() {
+				Expect(testEnv.Cleanup(ctx, clusterStack)).To(Succeed())
+			})
+
+			It("creates the ProviderClusterStackRelease in the namespace of the ClusterStack", func() {
+				Eventually(func() error {
+					var clusterStackRelease csov1alpha1.ClusterStackRelease
+					return testEnv.Get(ctx, clusterStackReleaseTagV1Key, &clusterStackRelease)
+				}, timeout, interval).Should(BeNil())
+
+				Eventually(func() error {
+					ref := &corev1.ObjectReference{
+						APIVersion: "infrastructure.clusterstack.x-k8s.io/v1alpha1",
+						Kind:       "TestInfrastructureProviderClusterStackRelease",
+						Name:       clusterStackReleaseTagV1Key.Name,
+						Namespace:  testNs.Name,
+					}
+					_, err := external.Get(ctx, testEnv.GetClient(), ref)
+					return err
+				}, timeout, interval).Should(BeNil())
 			})
 		})
 
@@ -568,7 +616,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name); err != nil {
+					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef); err != nil {
 						testEnv.GetLogger().Error(err, "failed to get providerClusterStackRelease", "ref", foundProviderclusterStackReleaseRef)
 						return err
 					}
@@ -580,7 +628,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name); err != nil {
+					if _, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef); err != nil {
 						testEnv.GetLogger().Error(err, "failed to get providerClusterStackRelease", "ref", foundProviderclusterStackReleaseRef)
 						return err
 					}
@@ -611,7 +659,7 @@ var _ = Describe("ClusterStackReconciler", func() {
 						Namespace:  testNs.Name,
 					}
 
-					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef, testNs.Name)
+					_, err := external.Get(ctx, testEnv.GetClient(), foundProviderclusterStackReleaseRef)
 					return apierrors.IsNotFound(err)
 				}, timeout, interval).Should(BeTrue())
 			})
@@ -840,7 +888,8 @@ var _ = Describe("clusterStack validation", func() {
 				},
 				Spec: clusterv1.ClusterSpec{
 					Topology: &clusterv1.Topology{
-						Class: "docker-ferrol-1-27-v6",
+						Class:   "docker-ferrol-1-27-v6",
+						Version: testKubernetesVersion,
 					},
 				},
 			}
@@ -854,6 +903,10 @@ var _ = Describe("clusterStack validation", func() {
 
 		It("should not allow delete if ClusterStack is in use by Cluster", func() {
 			Expect(testEnv.Create(ctx, &cluster)).To(Succeed())
+			Eventually(func() error {
+				var foundCluster clusterv1.Cluster
+				return testEnv.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: testNs.Name}, &foundCluster)
+			}, timeout, interval).Should(Succeed())
 			Expect(testEnv.Delete(ctx, clusterStack)).ToNot(Succeed())
 		})
 
