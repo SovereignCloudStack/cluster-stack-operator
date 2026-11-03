@@ -363,7 +363,12 @@ func getFilePathToCAPICRDs(root string) string {
 	}
 
 	gopath := envOr("GOPATH", build.Default.GOPATH)
-	return filepath.Join(gopath, "pkg", "mod", "sigs.k8s.io", fmt.Sprintf("cluster-api@%s", clusterAPIVersion), "config", "crd", "bases")
+	moduleDir := filepath.Join(gopath, "pkg", "mod", "sigs.k8s.io", fmt.Sprintf("cluster-api@%s", clusterAPIVersion))
+	// Since Cluster API v1.14 the core CRDs are in core/config/crd/bases
+	if _, err := os.Stat(filepath.Join(moduleDir, "core", "config", "crd", "bases")); err == nil {
+		return filepath.Join(moduleDir, "core", "config", "crd", "bases")
+	}
+	return filepath.Join(moduleDir, "config", "crd", "bases")
 }
 
 func getFilePathToCAPIDockerCRDs(root string) string {

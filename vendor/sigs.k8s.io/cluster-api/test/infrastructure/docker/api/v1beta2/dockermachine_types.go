@@ -51,16 +51,8 @@ type DockerMachineSpec struct {
 	// +optional
 	ExtraMounts []Mount `json:"extraMounts,omitempty"`
 
-	// Bootstrapped is true when the kubeadm bootstrapping has been run
-	// against this machine
-	//
-	// Deprecated: This field will be removed in the next apiVersion.
-	// When removing also remove from staticcheck exclude-rules for SA1019 in golangci.yml.
-	// +optional
-	Bootstrapped bool `json:"bootstrapped,omitempty"`
-
 	// BootstrapTimeout is the total amount of time to wait for the machine to bootstrap before timing out.
-	// The default value is 3m.
+	// The default value is 5m.
 	// +optional
 	BootstrapTimeout *metav1.Duration `json:"bootstrapTimeout,omitempty"`
 }
@@ -84,8 +76,8 @@ type Mount struct {
 // DockerMachineStatus defines the observed state of DockerMachine.
 type DockerMachineStatus struct {
 	// conditions represents the observations of a DockerMachine's current state.
-	// Known condition types are NodeProvisioned, EtcdProvisioned, APIServerProvisioned, VMProvisioned,
-	// ControlPlaneInitialized, BootstrapExecSucceeded, LoadBalancerAvailable, ContainerProvisioned and Paused.
+	// Known condition types are Ready, ContainerProvisioned, CGroupsReady, PreLoadedImagesReady,
+	// BootstrapCompleted and Paused.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -105,6 +97,12 @@ type DockerMachineStatus struct {
 	// Addresses contains the associated addresses for the docker machine.
 	// +optional
 	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
+
+	// failureDomain is the unique identifier of the failure domain where this Machine has been placed in.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	FailureDomain string `json:"failureDomain,omitempty"`
 
 	// deprecated groups all the status fields that are deprecated and will be removed when all the nested field are removed.
 	// +optional
@@ -141,15 +139,20 @@ type DockerMachineV1Beta1DeprecatedStatus struct {
 
 // +kubebuilder:resource:path=dockermachines,scope=Namespaced,categories=cluster-api
 // +kubebuilder:object:root=true
+// +kubebuilder:deprecatedversion
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster"
-// +kubebuilder:printcolumn:name="Machine",type="string",JSONPath=".metadata.ownerReferences[?(@.kind==\"Machine\")].name",description="Machine object which owns with this DockerMachine"
-// +kubebuilder:printcolumn:name="ProviderID",type="string",JSONPath=".spec.providerID",description="Provider ID"
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.initialization.provisioned",description="Machine ready status"
+// +kubebuilder:printcolumn:name="Provider ID",type="string",JSONPath=".spec.providerID",description="Provider ID",priority=10
+// +kubebuilder:printcolumn:name="Failure domain",type="string",JSONPath=".status.failureDomain",description="The failure domain where the VSphereMachine has been scheduled"
+// +kubebuilder:printcolumn:name="IP",type="string",JSONPath=`.status.addresses[?(@.type=="InternalIP")].address`,description="IP of the Machine",priority=10
+// +kubebuilder:printcolumn:name="Paused",type="string",JSONPath=`.status.conditions[?(@.type=="Paused")].status`,description="Reconciliation paused",priority=10
+// +kubebuilder:printcolumn:name="Provisioned",type="string",JSONPath=".status.initialization.provisioned",description="DockerMachine is provisioned"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of DockerMachine"
 
 // DockerMachine is the Schema for the dockermachines API.
+//
+// Deprecated: DockerMachine is deprecated. Use DevMachine instead.
 type DockerMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

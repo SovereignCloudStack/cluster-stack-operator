@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
-	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	runtimecatalog "sigs.k8s.io/cluster-api/api/runtime/catalog"
 )
 
 // GeneratePatchesRequest is the request of the GeneratePatches hook.
@@ -100,18 +100,6 @@ type GeneratePatchesResponseItem struct {
 	// +required
 	Patch []byte `json:"patch"`
 }
-
-// PatchType defines the supported patch types.
-// +enum
-type PatchType string
-
-const (
-	// JSONPatchType identifies a https://datatracker.ietf.org/doc/html/rfc6902 JSON patch.
-	JSONPatchType PatchType = "JSONPatch"
-
-	// JSONMergePatchType identifies a https://datatracker.ietf.org/doc/html/rfc7386 JSON merge patch.
-	JSONMergePatchType PatchType = "JSONMergePatch"
-)
 
 // GeneratePatches generates patches during topology reconciliation for the entire Cluster topology.
 func GeneratePatches(*GeneratePatchesRequest, *GeneratePatchesResponse) {}
@@ -221,7 +209,7 @@ type DiscoverVariablesResponse struct {
 
 	// variables are variable schemas for variables defined by the DiscoverVariables hook.
 	// +optional
-	Variables []clusterv1beta1.ClusterClassVariable `json:"variables,omitempty"`
+	Variables []clusterv1.ClusterClassVariable `json:"variables,omitempty"`
 }
 
 var _ ResponseObject = &DiscoverVariablesResponse{}

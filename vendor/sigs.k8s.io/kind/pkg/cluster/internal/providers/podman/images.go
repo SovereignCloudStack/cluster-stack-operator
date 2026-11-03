@@ -37,7 +37,7 @@ func ensureNodeImages(logger log.Logger, status *cli.Status, cfg *config.Cluster
 	for _, image := range common.RequiredNodeImages(cfg).List() {
 		// prints user friendly message
 		friendlyImageName, image := sanitizeImage(image)
-		status.Start(fmt.Sprintf("Ensuring node image (%s) 🖼", friendlyImageName))
+		status.Start(fmt.Sprintf("Ensuring node image (%s) 🖼️", friendlyImageName))
 		if _, err := pullIfNotPresent(logger, image, 4); err != nil {
 			status.End(false)
 			return err
@@ -92,9 +92,9 @@ func sanitizeImage(image string) (friendlyImageName, pullImageName string) {
 	var remainder string
 
 	if strings.Contains(image, "@sha256:") {
-		splits := strings.Split(image, "@sha256:")
+		splits := strings.SplitN(image, "@sha256:", 2)
 		friendlyImageName = splits[0]
-		remainder = strings.Split(splits[0], ":")[0] + "@sha256:" + splits[1]
+		remainder = stripTag(splits[0]) + "@sha256:" + splits[1]
 	} else {
 		friendlyImageName = image
 		remainder = image
@@ -112,4 +112,13 @@ func sanitizeImage(image string) (friendlyImageName, pullImageName string) {
 	}
 
 	return
+}
+
+func stripTag(image string) string {
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon > lastSlash {
+		return image[:lastColon]
+	}
+	return image
 }

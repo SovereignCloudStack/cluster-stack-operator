@@ -43,16 +43,14 @@ type ClusterStackWebhook struct {
 
 // SetupWebhookWithManager initializes webhook manager for ClusterStack.
 func (r *ClusterStackWebhook) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&ClusterStack{}).
-		WithValidator(r).
+	return ctrl.NewWebhookManagedBy(mgr, &ClusterStack{}).
+		WithCustomValidator(r).
 		Complete()
 }
 
 // SetupWebhookWithManager initializes webhook manager for ClusterStackList.
 func (r *ClusterStackList) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		Complete()
 }
 

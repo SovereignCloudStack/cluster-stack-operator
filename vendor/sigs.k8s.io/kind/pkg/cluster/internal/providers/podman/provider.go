@@ -9,7 +9,7 @@ You may obtain a copy of the License at
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or impliep.
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
@@ -101,13 +101,30 @@ func (p *provider) Provision(status *cli.Status, cfg *config.Cluster) (err error
 
 // ListClusters is part of the providers.Provider interface
 func (p *provider) ListClusters() ([]string, error) {
+	// Select the format specifier for extracting the cluster label.
+	// podman 6.0.0 changed `.Labels` from a map to a slice, breaking the
+	// `index .Labels "key"` form; the `.Label "key"` specifier works on
+	// podman 5.0.0+ and across that change, but does not exist on older
+	// versions. See https://github.com/kubernetes-sigs/kind/issues/4201
+	v, err := getPodmanVersion()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to check podman version")
+	}
+
+	var format string
+	if v.AtLeast(version.MustParseSemantic(labelFormatVersion)) {
+		format = fmt.Sprintf(`{{.Label "%s"}}`, clusterLabelKey)
+	} else {
+		format = fmt.Sprintf(`{{index .Labels "%s"}}`, clusterLabelKey)
+	}
+
 	cmd := exec.Command("podman",
 		"ps",
 		"-a", // show stopped nodes
 		// filter for nodes with the cluster label
 		"--filter", "label="+clusterLabelKey,
 		// format to include the cluster name
-		"--format", fmt.Sprintf(`{{index .Labels "%s"}}`, clusterLabelKey),
+		"--format", format,
 	)
 	lines, err := exec.OutputLines(cmd)
 	if err != nil {
@@ -201,7 +218,7 @@ func (p *provider) GetAPIServerEndpoint(cluster string) (string, error) {
 	// https://github.com/containers/podman/issues/8444
 	if v.AtLeast(version.MustParseSemantic("2.2.0")) &&
 		v.LessThan(version.MustParseSemantic("3.0.0")) {
-		p.logger.Warnf("WARNING: podman version %s not fully supported, please use versions 3.0.0+")
+		p.logger.Warnf("WARNING: podman version %s not fully supported, please use versions 3.0.0+", v)
 
 		cmd := exec.Command(
 			"podman", "inspect",

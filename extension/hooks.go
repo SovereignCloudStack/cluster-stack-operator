@@ -23,7 +23,7 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
@@ -39,16 +39,13 @@ const (
 // Handler is the handler object with client.Client for the hook server.
 type Handler struct {
 	client.Client
-	// APIReader reads directly from the API server, not from the cache.
-	APIReader  client.Reader
 	HookRecord map[string]string
 }
 
 // NewHandler gives an extension handler.
-func NewHandler(c client.Client, apiReader client.Reader) *Handler {
+func NewHandler(c client.Client) *Handler {
 	return &Handler{
 		Client:     c,
-		APIReader:  apiReader,
 		HookRecord: make(map[string]string),
 	}
 }
@@ -69,7 +66,7 @@ func (e *Handler) DoBeforeClusterUpgrade(ctx context.Context, request *runtimeho
 	}
 
 	// the key consists of (name/namespace/clusterclass)
-	hookRecordKey := e.getHookRecordKey(ctx, &request.Cluster)
+	hookRecordKey := getHookRecordKey(&request.Cluster)
 
 	if clusterAddon.Spec.Hook != "BeforeClusterUpgrade" && !e.hasAlreadyPatchedClusterAddon(hookRecordKey, BeforeClusterUpgradeHook) {
 		patchHelper, err := patch.NewHelper(clusterAddon, e)
@@ -143,32 +140,8 @@ func (e *Handler) DoAfterControlPlaneInitialized(ctx context.Context, request *r
 	response.SetStatus(runtimehooksv1.ResponseStatusSuccess)
 }
 
-func (e *Handler) getHookRecordKey(ctx context.Context, cluster *clusterv1.Cluster) string {
-	return fmt.Sprintf("%s/%s/%s", cluster.GetName(), cluster.GetNamespace(), e.getClusterClass(ctx, cluster))
-}
-
-// getClusterClass returns the name of the ClusterClass of the cluster from the hook request.
-// Cluster API >= 1.13 sends the request as v1beta2 Cluster, where the class is in spec.topology.classRef.name
-// and not in spec.topology.class, so it is empty after decoding the request as v1beta1. In that case the
-// class is read from the API server, which serves the Cluster as v1beta1 as well. This must not use the
-// cache: Cluster API calls the hook right after it has seen the new class, when the cache of the CSO can
-// still have the previous one.
-func (e *Handler) getClusterClass(ctx context.Context, cluster *clusterv1.Cluster) string {
-	if cluster.Spec.Topology != nil && cluster.Spec.Topology.Class != "" {
-		return cluster.Spec.Topology.Class
-	}
-
-	current := &clusterv1.Cluster{}
-	if err := e.APIReader.Get(ctx, client.ObjectKeyFromObject(cluster), current); err != nil {
-		ctrl.LoggerFrom(ctx).Error(err, "failed to get the cluster to determine its cluster class")
-		return ""
-	}
-
-	if current.Spec.Topology == nil {
-		return ""
-	}
-
-	return current.Spec.Topology.Class
+func getHookRecordKey(cluster *clusterv1.Cluster) string {
+	return fmt.Sprintf("%s/%s/%s", cluster.GetName(), cluster.GetNamespace(), cluster.Spec.Topology.ClassRef.Name)
 }
 
 func (e *Handler) hasAlreadyPatchedClusterAddon(key, hook string) bool {

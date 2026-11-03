@@ -37,9 +37,8 @@ type ClusterAddonWebhook struct{}
 
 // SetupWebhookWithManager initializes webhook manager for ClusterAddon.
 func (w *ClusterAddonWebhook) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&ClusterAddon{}).
-		WithValidator(w).
+	return ctrl.NewWebhookManagedBy(mgr, &ClusterAddon{}).
+		WithCustomValidator(w).
 		Complete()
 }
 

@@ -42,9 +42,8 @@ type Cluster struct {
 // SetupWebhookWithManager initializes webhook manager for ClusterStack.
 func (r *Cluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	r.Client = mgr.GetClient()
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&clusterv1.Cluster{}).
-		WithValidator(r).
+	return ctrl.NewWebhookManagedBy(mgr, &clusterv1.Cluster{}).
+		WithCustomValidator(r).
 		Complete()
 }
 

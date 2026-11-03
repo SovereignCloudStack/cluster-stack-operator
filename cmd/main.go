@@ -42,9 +42,9 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	runtimecatalog "sigs.k8s.io/cluster-api/api/runtime/catalog"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
-	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
 	"sigs.k8s.io/cluster-api/exp/runtime/server"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -247,7 +247,7 @@ func main() {
 	restConfig.UserAgent = remote.DefaultClusterAPIUserAgent("cluster-stack-operator-extension-manager")
 
 	// Create the ExtensionHandlers for the lifecycle hooks
-	lifecycleExtensionHandlers := extension.NewHandler(mgr.GetClient(), mgr.GetAPIReader())
+	lifecycleExtensionHandlers := extension.NewHandler(mgr.GetClient())
 
 	setupLog.Info("Add extension handlers")
 	if err := hookServer.AddExtensionHandler(server.ExtensionHandler{
