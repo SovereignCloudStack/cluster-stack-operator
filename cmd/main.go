@@ -247,7 +247,7 @@ func main() {
 	restConfig.UserAgent = remote.DefaultClusterAPIUserAgent("cluster-stack-operator-extension-manager")
 
 	// Create the ExtensionHandlers for the lifecycle hooks
-	lifecycleExtensionHandlers := extension.NewHandler(mgr.GetClient())
+	lifecycleExtensionHandlers := extension.NewHandler(mgr.GetClient(), mgr.GetAPIReader())
 
 	setupLog.Info("Add extension handlers")
 	if err := hookServer.AddExtensionHandler(server.ExtensionHandler{
