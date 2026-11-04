@@ -55,7 +55,7 @@ func (f *fakeReader) Get(_ context.Context, _ client.ObjectKey, obj client.Objec
 	return nil
 }
 
-func (f *fakeReader) List(context.Context, client.ObjectList, ...client.ListOption) error {
+func (*fakeReader) List(context.Context, client.ObjectList, ...client.ListOption) error {
 	return errors.New("not implemented")
 }
 
