@@ -55,6 +55,8 @@ func Summary(csr *csov1alpha1.ClusterStackRelease) (csov1alpha1.ClusterStackRele
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseProviderSpecificWork
 	case conditions.IsFalse(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition):
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseDownloadingAssets
+	default:
+		// None of the conditions is set (yet), the phase stays as it is.
 	}
 
 	return summary, nil
