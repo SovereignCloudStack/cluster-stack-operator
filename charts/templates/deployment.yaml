@@ -132,8 +132,8 @@ spec:
       - name: hook-server-cert
         secret:
           defaultMode: 420
-          secretName: cso-hook-server-server-cert
+          secretName: {{ include "cso.fullname" . }}-hook-server-server-cert
       - name: cert
         secret:
           defaultMode: 420
-          secretName: cso-webhook-server-cert
+          secretName: {{ include "cso.fullname" . }}-webhook-server-cert

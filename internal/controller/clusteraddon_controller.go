@@ -54,10 +54,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -296,7 +296,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	}
 
 	// multi-stage cluster addon flow
-	in.addonStagesInput, err = r.getAddonStagesInput(in.restConfig, in.clusterAddonChartPath)
+	in.addonStagesInput, err = r.getAddonStagesInput(restConfig, in.clusterAddonChartPath)
 	if err != nil {
 		conditions.MarkFalse(
 			clusterAddon,
@@ -404,7 +404,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		}
 
 		// create the list of old release objects
-		oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
+		oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, oldRelease)
 		if err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
 		}
@@ -429,7 +429,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 		conditions.MarkTrue(clusterAddon, csov1alpha1.HelmChartAppliedCondition)
 
 		// remove the status resource if hook is finished
-		clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+		in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 		// remove the helm chart status from the status.
 		clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
@@ -470,7 +470,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	if clusterAddon.Spec.Hook == afterControlPlaneInitialized || clusterAddon.Spec.Hook == beforeClusterUpgradeHook {
 		if clusterAddon.Spec.Hook == beforeClusterUpgradeHook {
 			// create the list of old release objects
-			oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, clusterAddonConfig, oldRelease)
+			oldClusterStackObjectList, err := r.getOldReleaseObjects(ctx, in, oldRelease)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed to get old cluster stack object list from helm charts: %w", err)
 			}
@@ -507,7 +507,7 @@ func (r *ClusterAddonReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	clusterAddon.Status.Stages = make([]csov1alpha1.StageStatus, 0)
 
 	// remove the status resource if hook is finished
-	clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
+	in.clusterAddon.Status.Resources = make([]*csov1alpha1.Resource, 0)
 
 	// unset spec hook
 	clusterAddon.Spec.Hook = ""
@@ -550,7 +550,7 @@ func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in *t
 }
 
 // getOldReleaseObjects returns the old cluster stack objects in the workload cluster.
-func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *templateAndApplyClusterAddonInput, clusterAddonConfig clusteraddon.Config, oldRelease *release.Release) ([]*csov1alpha1.Resource, error) {
+func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *templateAndApplyClusterAddonInput, oldRelease *release.Release) ([]*csov1alpha1.Resource, error) {
 	// clusteraddon.yaml
 	clusterAddonConfigPath, err := r.getClusterAddonConfigPath(in.clusterAddon.Spec.ClusterStack)
 	if err != nil {
@@ -582,7 +582,13 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 	}
 
 	// this is the new way
-	// Read all the helm charts in new the un-tared cluster addon.
+	// Read all the helm charts in the un-tared cluster addon of the old release. The stages have to come from
+	// the clusteraddon.yaml of the old release as well, otherwise addons that are not part of the new release
+	// are not found and their objects are never cleaned up.
+	oldClusterAddonConfig, err := clusteraddon.ParseConfig(clusterAddonConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse the clusteraddon.yaml of the old cluster stack: %w", err)
+	}
 
 	var (
 		newBuildTemplate []byte
@@ -597,7 +603,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 		hook = beforeClusterUpgradeHook
 	}
 
-	for _, stage := range clusterAddonConfig.AddonStages[hook] {
+	for _, stage := range oldClusterAddonConfig.AddonStages[hook] {
 		if _, err := os.Stat(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name, release.OverwriteYaml)); err == nil {
 			newBuildTemplate, err = buildTemplateFromClusterAddonValues(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name, release.OverwriteYaml), in.cluster, r.Client)
 			if err != nil {
@@ -1281,7 +1287,11 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 
 	for name, ref := range referenceMap {
 		objectRef := referenceMap[name]
-		obj, err := external.Get(ctx, c, &objectRef, cluster.Namespace)
+		// external.Get uses the namespace of the reference. References of a Cluster are in the namespace of the Cluster.
+		if objectRef.Namespace == "" {
+			objectRef.Namespace = cluster.Namespace
+		}
+		obj, err := external.Get(ctx, c, &objectRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get object %s: %w", ref.Name, err)
 		}
@@ -1292,12 +1302,14 @@ func initializeBuiltins(ctx context.Context, c client.Client, referenceMap map[s
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:gocritic // controller.Options pass-through to controller builder
 func (r *ClusterAddonReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	logger := ctrl.LoggerFrom(ctx)
 	blder := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&csov1alpha1.ClusterAddon{}).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(logger, r.WatchFilterValue))
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(r.Scheme(), logger, r.WatchFilterValue))
 
 	// check also for updates in cluster objects
 	return blder.WatchesRawSource(

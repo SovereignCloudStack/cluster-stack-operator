@@ -19,7 +19,7 @@ package v1beta1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 const (
@@ -92,16 +92,32 @@ type DockerMachineStatus struct {
 
 	// Addresses contains the associated addresses for the docker machine.
 	// +optional
-	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
+	Addresses []clusterv1beta1.MachineAddress `json:"addresses,omitempty"`
 
 	// Conditions defines current service state of the DockerMachine.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
+
+	// v1beta2 groups all the fields that will be added or modified in DockerMachine's status with the V1Beta2 version.
+	// +optional
+	V1Beta2 *DockerMachineV1Beta2Status `json:"v1beta2,omitempty"`
+}
+
+// DockerMachineV1Beta2Status groups all the fields that will be added or modified in DockerMachine with the V1Beta2 version.
+// See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
+type DockerMachineV1Beta2Status struct {
+	// conditions represents the observations of a DockerMachine's current state.
+	// Known condition types are Ready, ContainerProvisioned, BootstrapExecSucceeded, Deleting, Paused.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:resource:path=dockermachines,scope=Namespaced,categories=cluster-api
 // +kubebuilder:object:root=true
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster"
 // +kubebuilder:printcolumn:name="Machine",type="string",JSONPath=".metadata.ownerReferences[?(@.kind==\"Machine\")].name",description="Machine object which owns with this DockerMachine"
@@ -118,14 +134,30 @@ type DockerMachine struct {
 	Status DockerMachineStatus `json:"status,omitempty"`
 }
 
-// GetConditions returns the set of conditions for this object.
-func (c *DockerMachine) GetConditions() clusterv1.Conditions {
+// GetV1Beta1Conditions returns the set of conditions for this object.
+func (c *DockerMachine) GetV1Beta1Conditions() clusterv1beta1.Conditions {
 	return c.Status.Conditions
 }
 
-// SetConditions sets the conditions on this object.
-func (c *DockerMachine) SetConditions(conditions clusterv1.Conditions) {
+// SetV1Beta1Conditions sets the conditions on this object.
+func (c *DockerMachine) SetV1Beta1Conditions(conditions clusterv1beta1.Conditions) {
 	c.Status.Conditions = conditions
+}
+
+// GetConditions returns the set of conditions for this object.
+func (c *DockerMachine) GetConditions() []metav1.Condition {
+	if c.Status.V1Beta2 == nil {
+		return nil
+	}
+	return c.Status.V1Beta2.Conditions
+}
+
+// SetConditions sets conditions for an API object.
+func (c *DockerMachine) SetConditions(conditions []metav1.Condition) {
+	if c.Status.V1Beta2 == nil {
+		c.Status.V1Beta2 = &DockerMachineV1Beta2Status{}
+	}
+	c.Status.V1Beta2.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true

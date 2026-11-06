@@ -20,26 +20,23 @@ import (
 	"context"
 	"fmt"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterclass"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func getUsedClusterClasses(ctx context.Context, c client.Client, namespace string) ([]string, error) {
-	clusterList := &clusterv1.ClusterList{}
-	if err := c.List(ctx, clusterList, &client.ListOptions{Namespace: namespace}); err != nil {
-		return nil, fmt.Errorf("failed to list clusters: %w", err)
+	// clusters of all namespaces can use the ClusterClasses of this namespace (spec.topology.classNamespace)
+	clusters, err := clusterclass.ListClustersUsingClassesOf(ctx, c, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list clusters using ClusterClasses of namespace %s: %w", namespace, err)
 	}
 
-	usedClusterClasses := make([]string, 0, len(clusterList.Items))
+	usedClusterClasses := make([]string, 0, len(clusters))
 
 	// list the names of all ClusterClasses that are referenced in Cluster objects
-	for i := range clusterList.Items {
-		cluster := clusterList.Items[i]
-		if cluster.Spec.Topology == nil {
-			continue
-		}
-		if cluster.Spec.Topology.Class != "" {
-			usedClusterClasses = append(usedClusterClasses, cluster.Spec.Topology.Class)
+	for i := range clusters {
+		if clusters[i].Spec.Topology.Class != "" {
+			usedClusterClasses = append(usedClusterClasses, clusters[i].Spec.Topology.Class)
 		}
 	}
 

@@ -19,7 +19,7 @@ package v1beta1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 // DockerClusterTemplateSpec defines the desired state of DockerClusterTemplate.
@@ -29,7 +29,7 @@ type DockerClusterTemplateSpec struct {
 
 // +kubebuilder:resource:path=dockerclustertemplates,scope=Namespaced,categories=cluster-api
 // +kubebuilder:object:root=true
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of DockerClusterTemplate"
 
 // DockerClusterTemplate is the Schema for the dockerclustertemplates API.
@@ -58,6 +58,6 @@ type DockerClusterTemplateResource struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
-	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
-	Spec       DockerClusterSpec    `json:"spec"`
+	ObjectMeta clusterv1beta1.ObjectMeta `json:"metadata,omitempty"`
+	Spec       DockerClusterSpec         `json:"spec"`
 }
