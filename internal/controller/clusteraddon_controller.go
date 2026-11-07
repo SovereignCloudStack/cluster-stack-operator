@@ -529,7 +529,7 @@ func (r *ClusterAddonReconciler) getNewReleaseObjects(ctx context.Context, in *t
 			}
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name), newBuildTemplate, in.kubernetesVersion)
+		helmTemplate, err := helmTemplateClusterAddon(ctx, filepath.Join(in.newDestinationClusterAddonChartDir, stage.Name), newBuildTemplate, in.kubernetesVersion)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template new helm chart of the latest cluster stack: %w", err)
 		}
@@ -568,7 +568,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 			return nil, fmt.Errorf("failed to build template from the old cluster stack cluster addon values: %w", err)
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(oldRelease.ClusterAddonChartPath(), buildTemplate, oldRelease.Meta.Versions.Kubernetes)
+		helmTemplate, err := helmTemplateClusterAddon(ctx, oldRelease.ClusterAddonChartPath(), buildTemplate, oldRelease.Meta.Versions.Kubernetes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template helm chart: %w", err)
 		}
@@ -605,7 +605,7 @@ func (r *ClusterAddonReconciler) getOldReleaseObjects(ctx context.Context, in *t
 			}
 		}
 
-		helmTemplate, err := helmTemplateClusterAddon(filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name), newBuildTemplate, oldRelease.Meta.Versions.Kubernetes)
+		helmTemplate, err := helmTemplateClusterAddon(ctx, filepath.Join(in.oldDestinationClusterAddonChartDir, stage.Name), newBuildTemplate, oldRelease.Meta.Versions.Kubernetes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to template new helm chart: %w", err)
 		}
@@ -746,7 +746,7 @@ func (r *ClusterAddonReconciler) templateAndApplyClusterAddonHelmChart(ctx conte
 		return false, fmt.Errorf("failed to build template from cluster addon values: %w", err)
 	}
 
-	helmTemplate, err := helmTemplateClusterAddon(clusterAddonChart, buildTemplate, in.kubernetesVersion)
+	helmTemplate, err := helmTemplateClusterAddon(ctx, clusterAddonChart, buildTemplate, in.kubernetesVersion)
 	if err != nil {
 		return false, fmt.Errorf("failed to template helm chart: %w", err)
 	}
@@ -863,7 +863,7 @@ check:
 		}
 		// Delete part
 		logger.V(1).Info("starting to template helm chart", "clusterStack", in.clusterAddon.Spec.ClusterStack, "name", stage.Name, "hook", in.clusterAddon.Spec.Hook)
-		helmTemplate, err := helmTemplateNewClusterStack(in, stage.Name)
+		helmTemplate, err := helmTemplateNewClusterStack(ctx, in, stage.Name)
 		if err != nil {
 			conditions.MarkFalse(
 				in.clusterAddon,
@@ -931,6 +931,9 @@ check:
 		}
 
 		in.clusterAddon.SetStagePhase(stage.Name, stage.Action, csov1alpha1.StagePhaseDone)
+
+	default:
+		// Other phases (e.g. Done) need no action here.
 	}
 
 	return false, nil
@@ -1038,7 +1041,7 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 				return true, nil, nil, nil
 			}
 
-			oldHelmTemplate, err = helmTemplateClusterAddon(oldClusterStackSubDirPath, oldBuildTemplate, in.oldKubernetesVersion)
+			oldHelmTemplate, err = helmTemplateClusterAddon(ctx, oldClusterStackSubDirPath, oldBuildTemplate, in.oldKubernetesVersion)
 			if err != nil {
 				conditions.MarkFalse(
 					in.clusterAddon,
@@ -1082,7 +1085,7 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 		}
 	}
 
-	newHelmTemplate, err = helmTemplateClusterAddon(newClusterStackSubDirPath, newBuildTemplate, in.kubernetesVersion)
+	newHelmTemplate, err = helmTemplateClusterAddon(ctx, newClusterStackSubDirPath, newBuildTemplate, in.kubernetesVersion)
 	if err != nil {
 		conditions.MarkFalse(
 			in.clusterAddon,
@@ -1105,11 +1108,11 @@ func (r *ClusterAddonReconciler) templateNewClusterStackAddonHelmChart(ctx conte
 	return false, oldHelmTemplate, newHelmTemplate, nil
 }
 
-func helmTemplateNewClusterStack(in *templateAndApplyClusterAddonInput, name string) (newTemplate []byte, err error) {
+func helmTemplateNewClusterStack(ctx context.Context, in *templateAndApplyClusterAddonInput, name string) (newTemplate []byte, err error) {
 	var buildTemplate []byte
 
 	newClusterStackSubDirPath := filepath.Join(in.newDestinationClusterAddonChartDir, name)
-	newHelmTemplate, err := helmTemplateClusterAddon(newClusterStackSubDirPath, buildTemplate, in.kubernetesVersion)
+	newHelmTemplate, err := helmTemplateClusterAddon(ctx, newClusterStackSubDirPath, buildTemplate, in.kubernetesVersion)
 	if err != nil {
 		return nil, fmt.Errorf("failed to template new helm chart: %w", err)
 	}
@@ -1252,16 +1255,18 @@ func buildTemplateFromClusterAddonValues(ctx context.Context, addonValuePath str
 // Then it returns the path of the generated yaml file.
 // Example: helm template /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz
 // The return yaml file path will be /tmp/downloads/cluster-stacks/myprovider-myclusterstack-1-26-v2/myprovider-myclusterstack-1-26-v2.tgz.yaml.
-func helmTemplateClusterAddon(chartPath string, helmTemplate []byte, kubernetesVersion string) ([]byte, error) {
+func helmTemplateClusterAddon(ctx context.Context, chartPath string, helmTemplate []byte, kubernetesVersion string) ([]byte, error) {
 	helmCommand := "helm"
-	helmArgs := []string{"template", "--include-crds", "--dependency-update"}
+	helmArgs := []string{
+		"template", "--include-crds", "--dependency-update",
+		"--kube-version", kubernetesVersion, "cluster-addon", filepath.Base(chartPath), "--namespace", clusterAddonNamespace, "-f", "-",
+	}
 
 	input := bytes.NewBuffer(helmTemplate)
 
 	var cmdOutput bytes.Buffer
 
-	helmArgs = append(helmArgs, "--kube-version", kubernetesVersion, "cluster-addon", filepath.Base(chartPath), "--namespace", clusterAddonNamespace, "-f", "-")
-	helmTemplateCmd := exec.Command(helmCommand, helmArgs...)
+	helmTemplateCmd := exec.CommandContext(ctx, helmCommand, helmArgs...) //nolint:gosec // G204: fixed command "helm", the arguments come from the downloaded release
 	helmTemplateCmd.Stderr = os.Stderr
 	helmTemplateCmd.Dir = filepath.Dir(chartPath)
 	helmTemplateCmd.Stdout = &cmdOutput
@@ -1366,6 +1371,11 @@ func unTarContent(src, dst string) error {
 			return fmt.Errorf("reading tar archive: %w", err)
 		}
 
+		// Do not extract entries that would end up outside of the destination directory.
+		if !filepath.IsLocal(header.Name) {
+			return fmt.Errorf("%q: tar entry points outside of the destination directory", header.Name)
+		}
+
 		// Calculate the target file path
 		targetPath := filepath.Join(dst, header.Name) // #nosec
 
@@ -1381,7 +1391,7 @@ func unTarContent(src, dst string) error {
 				return fmt.Errorf("%q: creating directory: %w", filepath.Dir(targetPath), err)
 			}
 
-			outputFile, err := os.Create(filepath.Clean(targetPath))
+			outputFile, err := os.Create(filepath.Clean(targetPath)) //nolint:gosec // G703: header.Name is checked with filepath.IsLocal above
 			if err != nil {
 				return fmt.Errorf("%q: creating file: %w", targetPath, err)
 			}
