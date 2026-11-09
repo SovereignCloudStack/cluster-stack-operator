@@ -172,7 +172,11 @@ func setLabel(target *unstructured.Unstructured, key, val string) error {
 						return fmt.Errorf("error setting labels on .spec.selector for apps/extensions group: %w", err)
 					}
 				}
+			default:
+				// Other API versions have no selector to adjust.
 			}
+		default:
+			// Other kinds have no pod template to label.
 		}
 	case "batch":
 		if gvk.Kind == JobKind {
@@ -189,6 +193,8 @@ func setLabel(target *unstructured.Unstructured, key, val string) error {
 				return fmt.Errorf("error setting labels under spec.template for batch group: %w", err)
 			}
 		}
+	default:
+		// Other groups have no pod template to label.
 	}
 	return nil
 }
