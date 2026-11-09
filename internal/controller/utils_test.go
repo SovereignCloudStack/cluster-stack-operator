@@ -72,7 +72,8 @@ var _ = Describe("getUsedClusterClasses", func() {
 
 	AfterEach(func() {
 		Eventually(func() error {
-			objs := []client.Object{nsA, nsB}
+			objs := make([]client.Object, 0, 2+len(clusters))
+			objs = append(objs, nsA, nsB)
 			for _, cluster := range clusters {
 				objs = append(objs, cluster)
 			}

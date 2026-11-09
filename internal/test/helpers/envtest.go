@@ -430,6 +430,8 @@ func storageVariantFromCAPI(filePath string) (*apiextensionsv1.CustomResourceDef
 			crd.Spec.Versions[i].Storage = true
 		case "v1beta2":
 			crd.Spec.Versions[i].Storage = false
+		default:
+			// Other versions keep their storage setting.
 		}
 	}
 	crd.Spec.Conversion = nil
