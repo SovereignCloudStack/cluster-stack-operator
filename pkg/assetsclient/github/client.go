@@ -155,7 +155,7 @@ func (c *realGhClient) handleRedirect(ctx context.Context, url string, assetFile
 		return fmt.Errorf("failed to define http get request: %w", err)
 	}
 
-	resp, err := c.httpclient.Do(req)
+	resp, err := c.httpclient.Do(req) //nolint:gosec // G704: url is the download location the GitHub API returned for the release asset
 	if err != nil {
 		return fmt.Errorf("failed to get URL %q: %w", url, err)
 	}

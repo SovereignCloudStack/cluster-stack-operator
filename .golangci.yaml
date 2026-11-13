@@ -227,6 +227,11 @@ linters:
       - linters:
           - wrapcheck
         path: _test\.go
+      # pkg/version is public API, renaming it would break importers.
+      - linters:
+          - revive
+        path: pkg/version/
+        text: avoid package names that conflict with Go standard library package names
     paths:
       - vendor$
       - third_party$

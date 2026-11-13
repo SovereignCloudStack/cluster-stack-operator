@@ -29,27 +29,33 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf /tmp/linux-amd64 /tmp/lychee-${LYCHEE_VERSION}.tgz
 
+# Install clusterctl (not available in Wolfi anymore)
+FROM docker.io/library/alpine:3.22.1 AS clusterctl
+# update: datasource=github-tags depName=kubernetes-sigs/cluster-api
+ENV CLUSTERCTL_VERSION="v1.14.3"
+# hadolint ignore=DL3018
+RUN apk add --no-cache curl && \
+    curl -sfL -o /usr/bin/clusterctl https://github.com/kubernetes-sigs/cluster-api/releases/download/${CLUSTERCTL_VERSION}/clusterctl-linux-amd64 && \
+    chmod +x /usr/bin/clusterctl
+
 FROM cgr.dev/chainguard/wolfi-base:latest AS wolfi
 
-# update: datasource=github-tags depName=kubernetes-sigs/cluster-api
-ARG CLUSTERCTL_VERSION="v1.10.4"
 # update: datasource=github-tags depName=helm/helm
 ENV HELM_VERSION="v3.19.0"
 # update: datasource=github-tags depName=kubernetes-sigs/kind
-ARG KIND_VERSION="v0.30.0"
+ARG KIND_VERSION="v0.33.0"
 # update: datasource=github-tags depName=kubernetes/kubernetes
 ARG KUBECTL_VERSION="v1.34.0"
 # update: datasource=github-tags depName=kubernetes-sigs/kustomize extractVersion=^kustomize\/v(?<version>.+)$
 ARG KUSTOMIZE_VERSION="v5.7.1"
 # update: datasource=github-tags depName=aquasecurity/trivy
-ARG TRIVY_VERSION="v0.66.0"
+ARG TRIVY_VERSION="v0.70.0"
 # update: datasource=github-tags depName=kubernetes-sigs/controller-tools
-ARG CONTROLLER_GEN_VERSION="v0.19.0"
+ARG CONTROLLER_GEN_VERSION="v0.23.0"
 
 # hadolint ignore=DL3018
 RUN apk add -U --no-cache \
     curl \
-    clusterctl=~${CLUSTERCTL_VERSION#v} \
     controller-gen=~${CONTROLLER_GEN_VERSION#v} \
     helm=~${HELM_VERSION#v} \
     kind=~${KIND_VERSION#v} \
@@ -60,7 +66,7 @@ RUN apk add -U --no-cache \
 # Install Golang CI Lint
 FROM docker.io/library/alpine:3.22.1 AS golangci
 # update: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-ENV GOLANGCI_VERSION="v2.4.0"
+ENV GOLANGCI_VERSION="v2.10.1"
 WORKDIR /
 # hadolint ignore=DL3018,DL4006
 RUN apk add --no-cache curl && \
@@ -75,7 +81,7 @@ FROM docker.io/aquasec/trivy:0.66.0 AS trivy
 ############################
 # CSO Build Image Base #
 ############################
-FROM docker.io/library/golang:1.24.6-bullseye
+FROM docker.io/library/golang:1.26.10-bookworm
 
 # update: datasource=github-tags depName=adrienverge/yamllint versioning=semver
 ENV YAMLLINT_VERSION="v1.37.1"
@@ -89,11 +95,11 @@ RUN apt-get update && \
     file zip unzip jq gettext \
     libsystemd-dev jq && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
-    pip install --no-cache-dir \
+    pip install --no-cache-dir --break-system-packages \
     yamllint==${YAMLLINT_VERSION} \
     yamlfixer-opt-nc==${YAMLFIXER_VERSION}
 
-COPY --from=wolfi /usr/bin/clusterctl /usr/bin/clusterctl
+COPY --from=clusterctl /usr/bin/clusterctl /usr/bin/clusterctl
 COPY --from=wolfi /usr/bin/controller-gen /usr/bin/controller-gen
 COPY --from=wolfi /usr/bin/helm /usr/bin/helm
 COPY --from=wolfi /usr/bin/kubectl /usr/bin/kubectl

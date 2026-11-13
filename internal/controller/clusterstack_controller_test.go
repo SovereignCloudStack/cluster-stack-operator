@@ -18,6 +18,7 @@ package controller
 
 import (
 	"reflect"
+	"slices"
 	"sort"
 	"testing"
 
@@ -330,7 +331,7 @@ func TestGetUsableClusterStackReleaseVersions(t *testing.T) {
 		expectedVersions := []string{"v1", "v3"}
 
 		// Check if the result matches the expected versions
-		if !equalStringSlices(usableVersions, expectedVersions) {
+		if !slices.Equal(usableVersions, expectedVersions) {
 			t.Errorf("Expected versions %v, but got %v", expectedVersions, usableVersions)
 		}
 	})
@@ -348,7 +349,7 @@ func TestGetUsableClusterStackReleaseVersions(t *testing.T) {
 		expectedVersions := []string{}
 
 		// Check if the result matches the expected versions
-		if !equalStringSlices(usableVersions, expectedVersions) {
+		if !slices.Equal(usableVersions, expectedVersions) {
 			t.Errorf("Expected versions %v, but got %v", expectedVersions, usableVersions)
 		}
 	})
@@ -377,18 +378,6 @@ func TestGetClusterStackReleasesInSpec(t *testing.T) {
 			t.Errorf("Expected result %v, not found", k)
 		}
 	}
-}
-
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func toString(arr1 []*csov1alpha1.ClusterStackRelease) []string {
