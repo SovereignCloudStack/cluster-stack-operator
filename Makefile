@@ -301,7 +301,7 @@ $(MGT_CLUSTER_KUBECONFIG):
 $(WORKER_CLUSTER_KUBECONFIG):
 	./hack/get-kubeconfig-of-workload-cluster.sh
 
-KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --use-env --bin-dir $(abspath $(TOOLS_BIN_DIR)) -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
+KUBEBUILDER_ASSETS ?= $(shell $(SETUP_ENVTEST) use --bin-dir $(abspath $(TOOLS_BIN_DIR)) -p path $(KUBEBUILDER_ENVTEST_KUBERNETES_VERSION))
 
 .PHONY: test-integration
 test-integration: test-integration-workloadcluster test-integration-github test-integration-oci
