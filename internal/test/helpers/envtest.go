@@ -87,7 +87,7 @@ const (
 	DefaultPodNamespace = "cso-system"
 
 	// defaultKindClusterNodeImage is default node image for kind cluster.
-	defaultKindClusterNodeImage = "kindest/node:v1.26.6@sha256:6e2d8b28a5b601defe327b98bd1c2d1930b49e5d8c512e1895099e4504007adb" //#nosec
+	defaultKindClusterNodeImage = "kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f" //#nosec
 )
 
 const (
@@ -249,7 +249,8 @@ func NewTestEnvironment() *TestEnvironment {
 		// Create kind cluster
 		klog.Info("creating kind cluster")
 
-		cluster := kind.NewProvider(kind.ProviderWithDocker())
+		// Detects the container runtime (docker by default, KIND_EXPERIMENTAL_PROVIDER overrides it).
+		cluster := kind.NewProvider()
 		err = cluster.Create(
 			DefaultKindClusterName,
 			kind.CreateWithWaitForReady(time.Minute*2),

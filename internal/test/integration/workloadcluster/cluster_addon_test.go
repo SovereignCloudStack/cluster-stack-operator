@@ -34,10 +34,15 @@ import (
 )
 
 const (
-	kubeSystemNamespace     = "kube-system"
-	metricsServerDeployment = "metrics-server"
-	webDeployment           = "web"
-	clusterAddonLabelKey    = "clusterAddonVersion"
+	kubeSystemNamespace      = "kube-system"
+	metricsServerDeployment  = "metrics-server"
+	ciliumOperatorDeployment = "cilium-operator"
+
+	// gatewayAPIGroupVersion is installed by the gateway-api addon, which only the first release contains.
+	gatewayAPIGroupVersion = "gateway.networking.k8s.io/v1"
+	// domainLabelKey is set on the metrics-server from the control plane endpoint of the cluster,
+	// see the overwrite.yaml of the metrics-server addon.
+	domainLabelKey = "domain"
 )
 
 var _ = Describe("ClusterAddonReconciler", func() {
@@ -48,8 +53,7 @@ var _ = Describe("ClusterAddonReconciler", func() {
 		testNs *corev1.Namespace
 		secret *corev1.Secret
 
-		key                    types.NamespacedName
-		clusterStackReleaseKey types.NamespacedName
+		key types.NamespacedName
 	)
 
 	BeforeEach(func() {
@@ -58,7 +62,6 @@ var _ = Describe("ClusterAddonReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		key = types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", helpers.DefaultKindClusterName), Namespace: testNs.Name}
-		clusterStackReleaseKey = types.NamespacedName{Name: testClusterStackName, Namespace: testNs.Name}
 
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -82,8 +85,8 @@ var _ = Describe("ClusterAddonReconciler", func() {
 
 		Eventually(func() bool {
 			var foundClusterStackRelease csov1alpha1.ClusterStackRelease
-			if err := testEnv.Get(ctx, clusterStackReleaseKey, &foundClusterStackRelease); err != nil {
-				testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "key", clusterStackReleaseKey)
+			if err := testEnv.Get(ctx, types.NamespacedName{Name: testClusterStackName, Namespace: testNs.Name}, &foundClusterStackRelease); err != nil {
+				testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "name", testClusterStackName)
 				return false
 			}
 			return true
@@ -95,9 +98,10 @@ var _ = Describe("ClusterAddonReconciler", func() {
 				Namespace: testNs.Name,
 			},
 			Spec: clusterv1.ClusterSpec{
+				ControlPlaneEndpoint: clusterv1.APIEndpoint{Host: testControlPlaneHost, Port: 6443},
 				Topology: &clusterv1.Topology{
-					Class:   testClusterStackName,
-					Version: "v1.27.3",
+					Class:   testClusterClassName,
+					Version: testKubernetesVersion,
 				},
 			},
 		}
@@ -108,400 +112,143 @@ var _ = Describe("ClusterAddonReconciler", func() {
 		Expect(testEnv.Cleanup(ctx, cluster, clusterStackRelease)).To(Succeed())
 	})
 
-	Context("Basic test", func() {
-		It("sets HelmChartAppliedCondition condition on true if cluster addon helm chart has been applied", func() {
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, cluster); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			Eventually(func() bool {
-				var foundClusterAddon csov1alpha1.ClusterAddon
-				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
-					testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
-					return false
-				}
-
-				if foundClusterAddon.Spec.ClusterRef.Name != cluster.Name {
-					testEnv.GetLogger().Info("wrong cluster ref name", "got", foundClusterAddon.Spec.ClusterRef.Name, "want", cluster.Name)
-					return false
-				}
-
-				err := testEnv.Client.Get(ctx, key, &foundClusterAddon)
-				if err != nil {
-					return false
-				}
-				return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
-			}, timeout, interval).Should(BeTrue())
-		})
-
-		It("updates the resource status and successfully applies it", func() {
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, cluster); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			Eventually(func() bool {
-				var foundClusterAddon csov1alpha1.ClusterAddon
-				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
-					testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
-					return false
-				}
-
-				if len(foundClusterAddon.Status.Resources) == 0 {
-					testEnv.GetLogger().Info("no resources found in status")
-					return false
-				}
-				resource := foundClusterAddon.Status.Resources[0]
-
-				if resource.Status != csov1alpha1.ResourceStatusSynced {
-					testEnv.GetLogger().Info("first resource not synced", "resource", resource)
-					return false
-				}
-
-				if resource.Error != "" {
-					testEnv.GetLogger().Info("first resource has error", "error", resource.Error)
-					return false
-				}
-
-				return true
-			}, timeout, interval).Should(BeTrue())
-		})
-
-		It("applies the helm chart", func() {
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			By("patching the cluster")
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, cluster); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			By("querying the object")
-			Eventually(func() bool {
-				deployment, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, metricsServerDeployment, metav1.GetOptions{})
-				if err != nil {
-					return false
-				}
-
-				// check labels
-				version := deployment.GetLabels()[clusterAddonLabelKey]
-				if version == "v1" {
-					return true
-				}
-				testEnv.GetLogger().Info("found wrong label in deployment", "want", "v1", "got", version)
-				return false
-			}, timeout, interval).Should(BeTrue())
-		})
-
-		It("updates the clusteraddon helm chart objects if cluster switches to new cluster stack with new clusteraddon version", func() {
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, cluster); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			By("querying the object")
-			Eventually(func() bool {
-				deployment, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, metricsServerDeployment, metav1.GetOptions{})
-				if err != nil {
-					return false
-				}
-
-				// check labels
-				version := deployment.GetLabels()[clusterAddonLabelKey]
-				if version == "v1" {
-					return true
-				}
-
-				testEnv.GetLogger().Info("found wrong label in deployment", "want", "v1", "got", version)
-				return false
-			}, timeout, interval).Should(BeTrue())
-
-			By("updating the clusterclass in the cluster")
-			ph, err = patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			cluster.Spec.Topology.Class = testClusterStackNameV2
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, cluster); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			By("checking that the deployment in workload cluster has been updated")
-			Eventually(func() bool {
-				deployment, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, metricsServerDeployment, metav1.GetOptions{})
-				if err != nil {
-					return false
-				}
-
-				// check labels
-				version := deployment.GetLabels()[clusterAddonLabelKey]
-				if version == "v2" {
-					return true
-				}
-				testEnv.GetLogger().Info("found wrong label in deployment", "want", "v2", "got", version)
-				return false
-			}, timeout, interval).Should(BeTrue())
-		})
-
-		It("checks if resources are removed from status after ClusterClass update", func() {
-			By("making the control plane ready")
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() error {
-				return ph.Patch(ctx, cluster)
-			}, timeout, interval).Should(BeNil())
-
-			By("ensuring that the deployment exist in the old version is there in the status")
-			Eventually(func() bool {
-				var foundClusterAddon csov1alpha1.ClusterAddon
-				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
-					testEnv.GetLogger().Info(err.Error())
-					return false
-				}
-				testEnv.GetLogger().Info("Status of ClusterAddon", "Status", foundClusterAddon.Status)
-
-				found := false
-				for _, resource := range foundClusterAddon.Status.Resources {
-					if resource.Name == "web" && resource.Kind == "Deployment" {
-						found = true
-					}
-				}
-
-				return found
-			}, timeout, interval).Should(BeTrue())
-
-			By("updating the cluster class")
-			ph, err = patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			cluster.Spec.Topology.Class = testClusterStackNameV2
-
-			Eventually(func() error {
-				return ph.Patch(ctx, cluster)
-			}, timeout, interval).Should(BeNil())
-
-			By("ensuring that the deployment that does not exist in the new version is deleted from the status")
-			Eventually(func() bool {
-				var foundClusterAddon csov1alpha1.ClusterAddon
-				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
-					testEnv.GetLogger().Info(err.Error())
-					return false
-				}
-				testEnv.GetLogger().Info("Status of ClusterAddon", "Status", len(foundClusterAddon.Status.Resources))
-
-				found := false
-				for _, resource := range foundClusterAddon.Status.Resources {
-					if resource.Name == "web" && resource.Kind == "Deployment" {
-						found = true
-					}
-				}
-				return found
-			}, timeout, interval).Should(BeFalse())
-		})
-
-		It("checks if resources are removed from workloadcluster after ClusterClass update", func() {
-			By("making the control plane ready")
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() error {
-				return ph.Patch(ctx, cluster)
-			}, timeout, interval).Should(BeNil())
-
-			By("ensuring the deployment is there in the workloadcluster")
-			Eventually(func() bool {
-				if _, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, webDeployment, metav1.GetOptions{}); err != nil {
-					testEnv.GetLogger().Error(err, "couldn't find deployment")
-					return false
-				}
-
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			By("updating the cluster class")
-			ph, err = patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			cluster.Spec.Topology.Class = testClusterStackNameV2
-
-			Eventually(func() error {
-				return ph.Patch(ctx, cluster)
-			}, timeout, interval).Should(BeNil())
-
-			By("ensuring the deployment is not there in the workloadcluster after clusterclass update")
-			Eventually(func() bool {
-				if _, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, webDeployment, metav1.GetOptions{}); err != nil {
-					if apierrors.IsNotFound(err) {
-						return true
-					}
-					testEnv.GetLogger().Error(err, "couldn't find deployment")
-					return false
-				}
-
-				return false
-			}, timeout, interval).Should(BeTrue())
-		})
-	})
-})
-
-var _ = Describe("ClusterAddonReconcilerNewWay", func() {
-	var (
-		cluster             *clusterv1.Cluster
-		clusterStackRelease *csov1alpha1.ClusterStackRelease
-
-		testNs *corev1.Namespace
-		secret *corev1.Secret
-
-		key                    types.NamespacedName
-		clusterStackReleaseKey types.NamespacedName
-	)
-
-	BeforeEach(func() {
-		var err error
-		testNs, err = testEnv.CreateNamespace(ctx, "cso-system")
-		Expect(err).NotTo(HaveOccurred())
-
-		key = types.NamespacedName{Name: fmt.Sprintf("cluster-addon-%s", helpers.DefaultKindClusterName), Namespace: testNs.Name}
-		clusterStackReleaseKey = types.NamespacedName{Name: testNewWayClusterStackName, Namespace: testNs.Name}
-
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", helpers.DefaultKindClusterName, capisecret.Kubeconfig),
-				Namespace: testNs.Name,
-			},
-			Data: map[string][]byte{
-				"value": []byte(testEnv.KubeConfig),
-			},
-			Type: "cluster.x-k8s.io/secret",
-		}
-		Expect(testEnv.Create(ctx, secret)).To(Succeed())
-
-		clusterStackRelease = &csov1alpha1.ClusterStackRelease{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      testNewWayClusterStackName,
-				Namespace: testNs.Name,
-			},
-		}
-		Expect(testEnv.Create(ctx, clusterStackRelease)).To(Succeed())
+	// applyFirstRelease triggers the AfterControlPlaneInitialized hook, which the hook server of the
+	// operator does for real clusters, and waits until the cluster addon is ready.
+	applyFirstRelease := func() {
+		var foundClusterAddon csov1alpha1.ClusterAddon
 
 		Eventually(func() bool {
-			var foundClusterStackRelease csov1alpha1.ClusterStackRelease
-			if err := testEnv.Get(ctx, clusterStackReleaseKey, &foundClusterStackRelease); err != nil {
-				testEnv.GetLogger().Error(err, "failed to get clusterStackRelease", "key", clusterStackReleaseKey)
+			if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
+				testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
 				return false
 			}
 			return true
 		}, timeout, interval).Should(BeTrue())
 
-		cluster = &clusterv1.Cluster{
+		ph, err := patch.NewHelper(&foundClusterAddon, testEnv)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		foundClusterAddon.Spec.Hook = "AfterControlPlaneInitialized"
+		Eventually(func() error {
+			return ph.Patch(ctx, &foundClusterAddon)
+		}, timeout, interval).Should(Succeed())
+
+		Eventually(func() bool {
+			return clusterAddonReady(key)
+		}, applyTimeout, interval).Should(BeTrue())
+	}
+
+	// switchToSecondRelease updates the cluster class of the cluster to the second release.
+	switchToSecondRelease := func() {
+		By("creating the second cluster stack release")
+		secondRelease := &csov1alpha1.ClusterStackRelease{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      helpers.DefaultKindClusterName,
+				Name:      testClusterStackNameV2,
 				Namespace: testNs.Name,
 			},
-			Spec: clusterv1.ClusterSpec{
-				Topology: &clusterv1.Topology{
-					Class:   testNewWayClusterClassName,
-					Version: "v1.27.7",
-				},
-			},
 		}
-		Expect(testEnv.Create(ctx, cluster)).To(Succeed())
-	})
+		Expect(testEnv.Create(ctx, secondRelease)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(testEnv.Cleanup(ctx, secondRelease)).To(Succeed())
+		})
 
-	AfterEach(func() {
-		Expect(testEnv.Cleanup(ctx, cluster)).To(Succeed())
+		By("updating the cluster class of the cluster")
+		ph, err := patch.NewHelper(cluster, testEnv)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		cluster.Spec.Topology.Class = testClusterClassNameV2
 		Eventually(func() error {
-			err := testEnv.Client.Delete(ctx, clusterStackRelease)
-			if apierrors.IsNotFound(err) {
-				return nil
-			}
-			return err
-		}, timeout, interval).Should(BeNil())
-	})
+			return ph.Patch(ctx, cluster)
+		}, timeout, interval).Should(Succeed())
+	}
 
-	Context("Basic test", func() {
-		It("sets HelmChartAppliedCondition condition on true if cluster addon helm chart has been applied and currentHook is set", func() {
-			ph, err := patch.NewHelper(cluster, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, cluster); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
+	Context("with the docker/scs cluster stack", func() {
+		It("applies all addon stages and finishes the hook", func() {
+			applyFirstRelease()
 
 			var foundClusterAddon csov1alpha1.ClusterAddon
+			Expect(testEnv.Get(ctx, key, &foundClusterAddon)).To(Succeed())
 
+			Expect(conditions.IsTrue(&foundClusterAddon, csov1alpha1.HelmChartAppliedCondition)).To(BeTrue())
+			Expect(foundClusterAddon.Spec.ClusterStack).To(Equal(testClusterClassName))
+			Expect(foundClusterAddon.Spec.Hook).To(BeEmpty())
+			Expect(foundClusterAddon.Status.Stages).To(BeEmpty())
+		})
+
+		It("applies the resources of all addons to the workload cluster", func() {
+			applyFirstRelease()
+
+			By("checking the gateway-api addon")
+			_, err := testEnv.WorkloadClusterClient.Discovery().ServerResourcesForGroupVersion(gatewayAPIGroupVersion)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking the cni addon")
+			_, err = testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, ciliumOperatorDeployment, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking the metrics-server addon, which uses the control plane endpoint of the cluster")
+			deployment, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, metricsServerDeployment, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deployment.GetLabels()).To(HaveKeyWithValue(domainLabelKey, testControlPlaneHost))
+			Expect(*deployment.Spec.Replicas).To(Equal(int32(1)))
+		})
+
+		It("updates the objects if the cluster switches to a release with a changed addon", func() {
+			applyFirstRelease()
+
+			switchToSecondRelease()
+
+			By("checking that the metrics-server in the workload cluster has been updated")
 			Eventually(func() bool {
-				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
-					testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			ph, err = patch.NewHelper(&foundClusterAddon, testEnv)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			foundClusterAddon.Spec.Hook = "AfterControlPlaneInitialized"
-
-			Eventually(func() bool {
-				if err := ph.Patch(ctx, &foundClusterAddon); err != nil {
-					return false
-				}
-				return true
-			}, timeout, interval).Should(BeTrue())
-
-			Eventually(func() bool {
-				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
-					testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
-					return false
-				}
-
-				err := testEnv.Client.Get(ctx, key, &foundClusterAddon)
+				deployment, err := testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, metricsServerDeployment, metav1.GetOptions{})
 				if err != nil {
+					testEnv.GetLogger().Error(err, "couldn't get deployment")
 					return false
 				}
-				return conditions.IsTrue(&foundClusterAddon, clusterv1.ReadyCondition)
-			}, timeout, interval).Should(BeTrue())
+				return *deployment.Spec.Replicas == 2
+			}, applyTimeout, interval).Should(BeTrue())
+
+			By("checking that the cluster addon is ready again with the new cluster class")
+			Eventually(func() bool {
+				var foundClusterAddon csov1alpha1.ClusterAddon
+				if err := testEnv.Get(ctx, key, &foundClusterAddon); err != nil {
+					return false
+				}
+				return foundClusterAddon.Spec.ClusterStack == testClusterClassNameV2 && clusterAddonReady(key)
+			}, applyTimeout, interval).Should(BeTrue())
+		})
+
+		It("removes the objects of an addon that is not part of the new release", func() {
+			applyFirstRelease()
+
+			By("checking that the gateway-api addon of the first release is there")
+			_, err := testEnv.WorkloadClusterClient.Discovery().ServerResourcesForGroupVersion(gatewayAPIGroupVersion)
+			Expect(err).NotTo(HaveOccurred())
+
+			switchToSecondRelease()
+
+			By("checking that the objects of the gateway-api addon are removed from the workload cluster")
+			Eventually(func() bool {
+				_, err := testEnv.WorkloadClusterClient.Discovery().ServerResourcesForGroupVersion(gatewayAPIGroupVersion)
+				return apierrors.IsNotFound(err)
+			}, applyTimeout, interval).Should(BeTrue())
+
+			By("checking that the objects of the other addons are still there")
+			_, err = testEnv.WorkloadClusterClient.AppsV1().Deployments(kubeSystemNamespace).Get(ctx, ciliumOperatorDeployment, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
+
+// clusterAddonReady returns whether the cluster addon is ready and its Helm charts are applied.
+func clusterAddonReady(key types.NamespacedName) bool {
+	var clusterAddon csov1alpha1.ClusterAddon
+	if err := testEnv.Get(ctx, key, &clusterAddon); err != nil {
+		testEnv.GetLogger().Error(err, "failed to get clusterAddon", "key", key)
+		return false
+	}
+
+	testEnv.GetLogger().Info("Status of ClusterAddon", "ready", clusterAddon.Status.Ready, "hook", clusterAddon.Spec.Hook, "stages", clusterAddon.Status.Stages)
+
+	return clusterAddon.Status.Ready && conditions.IsTrue(&clusterAddon, csov1alpha1.HelmChartAppliedCondition)
+}
