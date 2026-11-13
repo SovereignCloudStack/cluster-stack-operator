@@ -22,12 +22,12 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterclass"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/version"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -159,20 +159,17 @@ func (r *ClusterStackWebhook) ValidateDelete(ctx context.Context, obj runtime.Ob
 }
 
 func (r *ClusterStackWebhook) getClustersUsingClusterStack(ctx context.Context, clusterStack *ClusterStack) ([]string, error) {
-	clusterList := &clusterv1.ClusterList{}
-	if err := r.List(ctx, clusterList, &client.ListOptions{Namespace: clusterStack.Namespace}); err != nil {
+	// clusters of all namespaces can use the ClusterClasses of this namespace (spec.topology.classNamespace)
+	clusterList, err := clusterclass.ListClustersUsingClassesOf(ctx, r.Client, clusterStack.Namespace)
+	if err != nil {
 		return nil, fmt.Errorf("failed to list clusters: %w", err)
 	}
 
-	clusters := make([]string, 0, len(clusterList.Items))
+	clusters := make([]string, 0, len(clusterList))
 
 	// list the names of all ClusterClasses that are referenced in Cluster objects
-	for i := range clusterList.Items {
-		if clusterList.Items[i].Spec.Topology == nil {
-			continue
-		}
-
-		clusterClass := clusterList.Items[i].Spec.Topology.Class
+	for i := range clusterList {
+		clusterClass := clusterList[i].Spec.Topology.Class
 		if clusterClass == "" {
 			continue
 		}
@@ -185,7 +182,7 @@ func (r *ClusterStackWebhook) getClustersUsingClusterStack(ctx context.Context, 
 			clusterStack.Spec.Channel == cs.Version.Channel &&
 			clusterStack.Spec.Name == cs.Name &&
 			clusterStack.Spec.KubernetesVersion == cs.KubernetesVersion.StringWithDot() {
-			clusters = append(clusters, clusterList.Items[i].Name)
+			clusters = append(clusters, clusterList[i].Name)
 		}
 	}
 
