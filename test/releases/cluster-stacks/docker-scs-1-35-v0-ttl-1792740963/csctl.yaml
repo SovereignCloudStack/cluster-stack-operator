@@ -1,0 +1,7 @@
+apiVersion: csctl.clusterstack.x-k8s.io/v1alpha1
+config:
+  clusterStackName: scs
+  kubernetesVersion: v1.35.5
+  provider:
+    apiVersion: docker.csctl.clusterstack.x-k8s.io/v1alpha1
+    type: docker
