@@ -37,10 +37,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -278,19 +278,25 @@ func (r *ClusterStackReconciler) getOrCreateClusterStackRelease(ctx context.Cont
 }
 
 func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx context.Context, name string, clusterStack *csov1alpha1.ClusterStack) (*corev1.ObjectReference, error) {
+	// The template always lives in the namespace of the ClusterStack, the namespace of the providerRef is optional
+	// and ignored. external.Get uses the namespace of the reference, so it has to be set explicitly.
+	templateRef := clusterStack.Spec.ProviderRef.DeepCopy()
+	templateRef.Namespace = clusterStack.Namespace
+
 	// get template object where the object is based on
-	from, err := external.Get(ctx, r.Client, clusterStack.Spec.ProviderRef, clusterStack.Namespace)
+	from, err := external.Get(ctx, r.Client, templateRef)
 	if err != nil {
-		return nil, fmt.Errorf("ProviderClusterStackReleaseTemplate %q for kind %q not found: %w", clusterStack.Spec.ProviderRef.Name, clusterStack.Spec.ProviderRef.GetObjectKind(), err)
+		return nil, fmt.Errorf("ProviderClusterStackReleaseTemplate %q for kind %q not found: %w", templateRef.Name, templateRef.GetObjectKind(), err)
 	}
 
 	ref := &corev1.ObjectReference{
 		APIVersion: from.GetAPIVersion(),
 		Kind:       strings.TrimSuffix(from.GetKind(), "Template"),
 		Name:       name,
+		Namespace:  clusterStack.Namespace,
 	}
 
-	existingObject, err := external.Get(ctx, r.Client, ref, clusterStack.Namespace)
+	existingObject, err := external.Get(ctx, r.Client, ref)
 
 	// handle unexpected errors
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -305,7 +311,7 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 	input := &generateProviderObjectInput{
 		ExistingObject: existingObject,
 		Template:       from,
-		TemplateRef:    clusterStack.Spec.ProviderRef,
+		TemplateRef:    templateRef,
 		Namespace:      clusterStack.Namespace,
 		Name:           name,
 		Labels:         clusterStack.Labels,
@@ -317,7 +323,13 @@ func (r *ClusterStackReconciler) createOrUpdateProviderClusterStackRelease(ctx c
 		return nil, fmt.Errorf("failed to generate template: %w", err)
 	}
 
-	objectRef := external.GetObjectReference(to)
+	// create ObjectReference manually since external.GetObjectReference is removed in CAPI v1.11
+	objectRef := &corev1.ObjectReference{
+		APIVersion: to.GetAPIVersion(),
+		Kind:       to.GetKind(),
+		Name:       to.GetName(),
+		Namespace:  to.GetNamespace(),
+	}
 
 	// update if it exists already and should be updated
 	if existsAlready {
@@ -671,6 +683,8 @@ func generateOwnerReference(clusterStack *csov1alpha1.ClusterStack) *metav1.Owne
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:gocritic // controller.Options pass-through to controller builder
 func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
@@ -709,7 +723,7 @@ func (r *ClusterStackReconciler) SetupWithManager(ctx context.Context, mgr ctrl.
 				},
 			}),
 		).
-		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(r.Scheme(), ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
 		Complete(r)
 }
 

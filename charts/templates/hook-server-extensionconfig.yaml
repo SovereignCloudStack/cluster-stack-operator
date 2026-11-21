@@ -6,11 +6,11 @@ metadata:
     cluster.x-k8s.io/provider: cluster-stack-operator
   {{- include "cso.labels" . | nindent 4 }}
   annotations:
-    runtime.cluster.x-k8s.io/inject-ca-from-secret: cso-system/cso-hook-server-server-cert
+    runtime.cluster.x-k8s.io/inject-ca-from-secret: {{ .Release.Namespace }}/{{ include "cso.fullname" . }}-hook-server-server-cert
 spec:
   clientConfig:
     service:
       name: {{ include "cso.fullname" . }}-hook-server-svc
-      namespace: cso-system
+      namespace: {{ .Release.Namespace }}
       port: 443
   namespaceSelector: {}
