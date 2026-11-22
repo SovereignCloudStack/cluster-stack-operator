@@ -201,7 +201,11 @@ func (csv Version) Compare(input Version) (int, error) {
 			return -1, nil
 		case csv.Patch == input.Patch:
 			return 0, nil
+		default:
+			// Unreachable: Patch is neither greater, smaller nor equal.
 		}
+	default:
+		// Unreachable: Major is neither greater, smaller nor equal.
 	}
 
 	return 0, nil

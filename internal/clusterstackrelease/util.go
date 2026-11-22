@@ -21,8 +21,8 @@ import (
 
 	csov1alpha1 "github.com/SovereignCloudStack/cluster-stack-operator/api/v1alpha1"
 	"github.com/SovereignCloudStack/cluster-stack-operator/pkg/clusterstack"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 )
 
 // Summary returns a ClusterStackReleaseSummary object from a clusterStackRelease.
@@ -55,6 +55,8 @@ func Summary(csr *csov1alpha1.ClusterStackRelease) (csov1alpha1.ClusterStackRele
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseProviderSpecificWork
 	case conditions.IsFalse(csr, csov1alpha1.ClusterStackReleaseAssetsReadyCondition):
 		summary.Phase = csov1alpha1.ClusterStackReleasePhaseDownloadingAssets
+	default:
+		// None of the conditions is set (yet), the phase stays as it is.
 	}
 
 	return summary, nil
