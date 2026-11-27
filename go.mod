@@ -1,6 +1,6 @@
 module github.com/SovereignCloudStack/cluster-stack-operator
 
-go 1.24.0
+go 1.25.0
 
 toolchain go1.25.1
 
@@ -19,7 +19,7 @@ require (
 	k8s.io/cli-runtime v0.30.3
 	k8s.io/client-go v0.33.3
 	k8s.io/klog/v2 v2.130.1
-	oras.land/oras-go/v2 v2.6.0
+	oras.land/oras-go/v2 v2.6.2
 	sigs.k8s.io/cluster-api v1.11.0
 	sigs.k8s.io/cluster-api/test v1.11.0
 	sigs.k8s.io/controller-runtime v0.21.0
@@ -57,7 +57,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250106144421-5f5ef82da422 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
